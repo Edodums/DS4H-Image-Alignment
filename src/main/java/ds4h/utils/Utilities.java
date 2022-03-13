@@ -15,7 +15,7 @@ public class Utilities {
                 runnable.run();
             }
             catch (Exception e){
-                System.err.println(e);
+                e.printStackTrace();
             }
         }).start();
     }

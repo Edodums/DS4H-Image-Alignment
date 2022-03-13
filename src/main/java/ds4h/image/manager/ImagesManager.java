@@ -33,7 +33,6 @@ public class ImagesManager implements ListIterator<ImagePlus> {
     int progressive = 0;
     ImageFile imageFile = null;
     for (int i = 0; i < imageFiles.size(); i++) {
-      
       if (progressive + imageFiles.get(i).getNImages() > index) {
         imageFile = imageFiles.get(i);
         break;
@@ -43,6 +42,10 @@ public class ImagesManager implements ListIterator<ImagePlus> {
     
     BufferedImage image = null;
     try {
+      if (index == -1) {
+        index = 0; // Just a ugly patch
+      }
+      
       image = imageFile.getImage(index - progressive, wholeSlide);
       image.setFilePath(imageFile.getPathFile());
       image.setTitle(MessageFormat.format("Editor Image {0}/{1}", index + 1, this.getNImages()));
@@ -140,8 +143,8 @@ public class ImagesManager implements ListIterator<ImagePlus> {
     Dimension maximumSize = new Dimension();
     imageFiles.forEach(imageFile -> {
       Dimension dimension = imageFile.getMaximumSize();
-      maximumSize.width = dimension.width > maximumSize.width ? dimension.width : maximumSize.width;
-      maximumSize.height = dimension.height > maximumSize.height ? dimension.height : maximumSize.height;
+      maximumSize.width = (double) dimension.width > maximumSize.width ? dimension.width : maximumSize.width;
+      maximumSize.height = (double) dimension.height > maximumSize.height ? dimension.height : maximumSize.height;
     });
     return maximumSize;
   }

@@ -1,25 +1,28 @@
 package ds4h.image.model;
 
 import ds4h.image.buffered.BufferedImage;
+import ij.IJ;
+import ij.ImagePlus;
 import ij.plugin.frame.RoiManager;
 import loci.formats.FormatException;
 import loci.formats.IFormatReader;
-import loci.formats.ImageReader;
 import loci.formats.gui.BufferedImageReader;
 import loci.plugins.in.DisplayHandler;
+import loci.plugins.in.ImagePlusReader;
 import loci.plugins.in.ImportProcess;
 import loci.plugins.in.ImporterOptions;
 
 import java.awt.*;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.IntStream;
 
 public class ImageFile {
   private final String pathFile;
-  private boolean reducedImageMode;
   private final List<RoiManager> roiManagers;
-  
+  private boolean reducedImageMode;
   private Dimension editorImageDimension;
   private BufferedImageReader bufferedEditorImageReader;
   private BufferedImageReader bufferedEditorImageReaderWholeSlide;
@@ -37,50 +40,37 @@ public class ImageFile {
     return getImageImportingProcess(pathFile).getMemoryUsage();
   }
   
-  private static ImportProcess getImageImportingProcess(String pathFile) throws IOException, FormatException {
+  private static ImportProcess getImageImportingProcess(String pathFile) throws IOException {
     ImporterOptions options = new ImporterOptions();
     options.setId(pathFile);
-    options.setSplitChannels(false);
-    options.setSplitTimepoints(false);
-    options.setSplitFocalPlanes(false);
-    options.setAutoscale(false);
-    options.setVirtual(false);
-    options.setColorMode(ImporterOptions.COLOR_MODE_DEFAULT);
+    options.setVirtual(true);
+    options.setGroupFiles(false);
+    options.setUngroupFiles(true);
     options.setOpenAllSeries(true);
-    options.setConcatenate(true);
-    
     ImportProcess process = new ImportProcess(options);
-    if (process != null) {
+    try {
       process.execute();
+    } catch (Exception e) {
+      e.printStackTrace();
     }
-    
     return process;
   }
   
   private void generateImageReader() throws FormatException, IOException {
     this.importProcess = getImageImportingProcess(pathFile);
-    final IFormatReader imageReader = new ImageReader(ImageReader.getDefaultReaderClasses());
-    if (imageReader != null) {
-      imageReader.setId(pathFile);
-      boolean over2GBLimit = (long) imageReader.getSizeX() * (long) imageReader.getSizeY() * imageReader.getRGBChannelCount() > Integer.MAX_VALUE / 3;
-      if (over2GBLimit) {
-        
-        // Cycles all the available series in search of an image with sustainable size
-        for (int i = 0; i < imageReader.getSeriesCount() && !this.reducedImageMode; i++) {
-          imageReader.setSeries(i);
-          over2GBLimit = (long) imageReader.getSizeX() * (long) imageReader.getSizeY() * imageReader.getRGBChannelCount() > Integer.MAX_VALUE / 3;
-          
-          if (!over2GBLimit)
-            this.reducedImageMode = true;
-        }
-      }
-      
-      this.editorImageDimension = new Dimension(imageReader.getSizeX(), imageReader.getSizeY());
-      this.bufferedEditorImageReader = BufferedImageReader.makeBufferedImageReader(imageReader);
-      for (int i = 0; i < bufferedEditorImageReader.getImageCount(); i++) {
-        this.roiManagers.add(new RoiManager(false));
-      }
+    final IFormatReader reader = this.importProcess.getBaseReader();
+    final ImagePlusReader imageReader = new ImagePlusReader(this.importProcess);
+    final ImagePlus[] imps = imageReader.openImagePlus();
+    final double realSize = Arrays.stream(imps).mapToDouble(ImagePlus::getSizeInBytes).sum();
+    final double gb = realSize / (1 << 30); // 1 << 30 is the same as 1024^3
+    final double maxGb = 2.0;
+    if (gb > maxGb) {
+      IJ.showMessage("IS GB OVER 2GB");
+      this.reducedImageMode = true;
     }
+    this.editorImageDimension = new Dimension(reader.getSizeX(), reader.getSizeY());
+    this.bufferedEditorImageReader = BufferedImageReader.makeBufferedImageReader(reader);
+    IntStream.range(0, bufferedEditorImageReader.getImageCount()).mapToObj(i -> new RoiManager(false)).forEachOrdered(this.roiManagers::add);
   }
   
   public int getNImages() {
@@ -88,18 +78,17 @@ public class ImageFile {
   }
   
   public BufferedImage getImage(int index, boolean wholeSlide) throws IOException, FormatException {
-    if (!wholeSlide)
+    if (!wholeSlide) {
       return new BufferedImage("", bufferedEditorImageReader.openImage(index), roiManagers.get(index), reducedImageMode);
-    else {
-      if (!wholeSlideInitialized) {
-        try {
-          getWholeSlideImage();
-        } catch (Exception e) {
-          e.printStackTrace();
-        }
-      }
-      return new BufferedImage("", bufferedEditorImageReaderWholeSlide.openImage(index), roiManagers.get(index), this.editorImageDimension);
     }
+    if (!wholeSlideInitialized) {
+      try {
+        getWholeSlideImage();
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+    }
+    return new BufferedImage("", bufferedEditorImageReaderWholeSlide.openImage(index), roiManagers.get(index), this.editorImageDimension);
   }
   
   public void dispose() throws IOException {
@@ -134,8 +123,8 @@ public class ImageFile {
     Dimension maximumSize = new Dimension();
     for (int i = 0; i < importProcess.getReader().getSeriesCount(); i++) {
       importProcess.getReader().setSeries(i);
-      maximumSize.width = importProcess.getReader().getSizeX() > maximumSize.width ? importProcess.getReader().getSizeX() : maximumSize.width;
-      maximumSize.height = importProcess.getReader().getSizeY() > maximumSize.height ? importProcess.getReader().getSizeY() : maximumSize.height;
+      maximumSize.width = Math.max(importProcess.getReader().getSizeX(), maximumSize.width);
+      maximumSize.height = Math.max(importProcess.getReader().getSizeY(), maximumSize.height);
     }
     return maximumSize;
   }
