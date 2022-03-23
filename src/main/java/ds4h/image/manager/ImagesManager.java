@@ -2,93 +2,161 @@ package ds4h.image.manager;
 
 import ds4h.image.buffered.BufferedImage;
 import ds4h.image.model.ImageFile;
+import ds4h.observer.Observable;
+import ij.ImageListener;
 import ij.ImagePlus;
+import ij.io.FileSaver;
 import ij.plugin.frame.RoiManager;
 import loci.formats.FormatException;
 
 import java.awt.*;
+import java.beans.PropertyChangeSupport;
+import java.io.File;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ListIterator;
 
-public class ImagesManager implements ListIterator<ImagePlus> {
+/**
+ * ListIterator of ImagePlus that has imagesFiles
+ * If you find why does it make sense please explain it to me.
+ * The previous developer has clearly not implemented a real iterator.
+ * I want to finish my things, I don't want always to fix things, come on.
+ */
+public class ImagesManager implements ListIterator<ImagePlus>, Observable {
+  private final PropertyChangeSupport support = new PropertyChangeSupport(this);
   private final List<ImageFile> imageFiles = new ArrayList<>();
   private int imageIndex;
+  private int currentIndex;
   
   public ImagesManager(List<String> filesPath) throws ImageOversizeException, FormatException, IOException {
     this.imageIndex = -1;
     for (String filePath : filesPath) {
-      addFile(filePath);
+      this.addFile(filePath);
     }
   }
   
   public void addFile(String pathFile) throws IOException, FormatException, ImageOversizeException {
     ImageFile imageFile = new ImageFile(pathFile);
-    this.imageFiles.add(imageFile);
+    this.getImageFiles().add(imageFile);
+    this.addListener(imageFile);
+  }
+  
+  private void addListener(ImageFile file) {
+    ImagePlus.addImageListener(new ImageListener() {
+      @Override
+      public void imageOpened(ImagePlus imagePlus) {
+        // Nothing for now
+      }
+      
+      @Override
+      public void imageClosed(ImagePlus imagePlus) {
+        // Nothing for now
+      }
+      
+      @Override
+      public void imageUpdated(ImagePlus imagePlus) {
+        if (imagePlus.changes) {
+          handleUpdatedImageChanges(imagePlus, file);
+          // then remove it
+          ImagePlus.removeImageListener(this);
+        }
+      }
+    });
+  }
+  
+  private void handleUpdatedImageChanges(ImagePlus imagePlus, ImageFile file) {
+    String path = this.saveUpdatedImage(imagePlus, file);
+    // delete from stack the old one
+    this.getImageFiles().remove(this.currentIndex + 1);
+    // add new one
+    try {
+      this.addFile(path);
+      firePropertyChange("updatedImage", file.getPathFile(), path);
+    } catch (IOException | FormatException | ImageOversizeException e) {
+      e.printStackTrace();
+    }
+  }
+  
+  private String saveUpdatedImage(ImagePlus imagePlus, ImageFile file) {
+    String baseDir = this.getDirFromPath(file.getPathFile());
+    String path = String.format("%s%d.tiff", baseDir, imagePlus.getProcessor().hashCode());
+    new FileSaver(imagePlus).saveAsTiff(path);
+    return path;
+  }
+  
+  private String getDirFromPath(String path) {
+    int lastIndexOfSeparator = path.lastIndexOf(File.separator);
+    if (lastIndexOfSeparator != -1) {
+      path = path.substring(0, lastIndexOfSeparator + 1);
+    }
+    return path;
   }
   
   private BufferedImage getImage(int index, boolean wholeSlide) {
     int progressive = 0;
     ImageFile imageFile = null;
-    for (int i = 0; i < imageFiles.size(); i++) {
-      if (progressive + imageFiles.get(i).getNImages() > index) {
-        imageFile = imageFiles.get(i);
+    for (int i = 0; i < this.getImageFiles().size(); i++) {
+      if (progressive + this.getImageFiles().get(i).getNImages() > index) {
+        imageFile = this.getImageFiles().get(i);
         break;
       }
-      progressive += imageFiles.get(i).getNImages();
+      progressive += this.getImageFiles().get(i).getNImages();
     }
-    
-    BufferedImage image = null;
     try {
       if (index == -1) {
-        index = 0; // Just a ugly patch
+        index = 0; // Just an ugly patch
       }
-      
-      image = imageFile.getImage(index - progressive, wholeSlide);
-      image.setFilePath(imageFile.getPathFile());
-      image.setTitle(MessageFormat.format("Editor Image {0}/{1}", index + 1, this.getNImages()));
+      if (imageFile != null) {
+        this.currentIndex = index - progressive;
+        final BufferedImage image = imageFile.getImage(this.currentIndex, wholeSlide);
+        image.setFilePath(imageFile.getPathFile());
+        image.setTitle(MessageFormat.format("Editor Image {0}/{1}", index + 1, this.getNImages()));
+        return image;
+      }
     } catch (Exception e) {
       e.printStackTrace();
     }
-    return image;
+    return null;
   }
   
   @Override
   public boolean hasNext() {
-    return imageIndex < this.getNImages() - 1;
+    return this.getImageIndex() < this.getNImages() - 1;
   }
   
   @Override
   public BufferedImage next() {
-    if (!hasNext())
+    if (!hasNext()) {
       return null;
-    imageIndex++;
-    return getImage(imageIndex, false);
+    }
+    this.imageIndex++;
+    return getImage(this.getImageIndex(), false);
   }
   
   @Override
   public boolean hasPrevious() {
-    return imageIndex > 0;
+    return this.getImageIndex() > 0;
   }
   
   @Override
   public BufferedImage previous() {
-    if (!hasPrevious())
+    if (!hasPrevious()) {
       return null;
-    imageIndex--;
-    return getImage(imageIndex, false);
+    }
+    this.imageIndex--;
+    return getImage(this.getImageIndex(), false);
   }
   
   @Override
   public int nextIndex() {
-    return imageIndex + 1;
+    return this.imageIndex + 1;
   }
   
   @Override
   public int previousIndex() {
-    return imageIndex - 1;
+    return this.imageIndex - 1;
   }
   
   @Override
@@ -97,6 +165,7 @@ public class ImagesManager implements ListIterator<ImagePlus> {
   
   @Override
   public void set(ImagePlus imagePlus) {
+  
   }
   
   @Override
@@ -108,14 +177,14 @@ public class ImagesManager implements ListIterator<ImagePlus> {
   }
   
   public int getNImages() {
-    return imageFiles.stream().mapToInt(ImageFile::getNImages).sum();
+    return this.getImageFiles().stream().mapToInt(ImageFile::getNImages).sum();
   }
   
   /**
    * This flag indicates whenever the manger uses a reduced-size image for compatibility
    */
   public void dispose() {
-    this.imageFiles.forEach(imageFile -> {
+    this.getImageFiles().forEach(imageFile -> {
       try {
         imageFile.dispose();
       } catch (IOException e) {
@@ -134,14 +203,14 @@ public class ImagesManager implements ListIterator<ImagePlus> {
   
   public List<RoiManager> getRoiManagers() {
     List<RoiManager> result = new ArrayList<>();
-    
-    this.imageFiles.forEach(imageFile -> result.addAll(imageFile.getRoiManagers()));
+    this.getImageFiles().forEach(imageFile -> result.addAll(imageFile.getRoiManagers()));
     return result;
   }
   
+  // ?? Unused ??
   public Dimension getMaximumSize() {
     Dimension maximumSize = new Dimension();
-    imageFiles.forEach(imageFile -> {
+    this.getImageFiles().forEach(imageFile -> {
       Dimension dimension = imageFile.getMaximumSize();
       maximumSize.width = (double) dimension.width > maximumSize.width ? dimension.width : maximumSize.width;
       maximumSize.height = (double) dimension.height > maximumSize.height ? dimension.height : maximumSize.height;
@@ -151,7 +220,7 @@ public class ImagesManager implements ListIterator<ImagePlus> {
   
   public List<Dimension> getImagesDimensions() {
     List<Dimension> dimensions;
-    dimensions = imageFiles.stream().reduce(new ArrayList<>(), (accDimensions, imageFile) -> {
+    dimensions = this.getImageFiles().stream().reduce(new ArrayList<>(), (accDimensions, imageFile) -> {
       accDimensions.addAll(imageFile.getImagesDimensions());
       return accDimensions;
     }, (accumulated, value) -> accumulated);
@@ -168,8 +237,17 @@ public class ImagesManager implements ListIterator<ImagePlus> {
    * @param index
    */
   public void removeImageFile(int index) {
-    this.imageFiles.remove(index);
-    this.imageIndex = this.imageIndex >= this.getNImages() ? index - 1 : index;
+    this.getImageFiles().remove(index);
+    this.imageIndex = this.getImageIndex() >= this.getNImages() ? index - 1 : index;
+  }
+  
+  private int getImageIndex() {
+    return this.imageIndex;
+  }
+  
+  @Override
+  public PropertyChangeSupport getSupport() {
+    return this.support;
   }
   
   public static class ImageOversizeException extends Exception {

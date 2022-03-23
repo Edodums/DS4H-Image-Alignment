@@ -32,6 +32,8 @@ import ds4h.dialog.remove.event.IRemoveDialogEvent;
 import ds4h.image.buffered.BufferedImage;
 import ds4h.image.manager.ImagesManager;
 import ds4h.image.model.ImageFile;
+import ds4h.services.JarService;
+import ds4h.services.library.LoaderStrategy;
 import ds4h.utils.Utilities;
 import ij.Prefs;
 import ij.WindowManager;
@@ -54,6 +56,8 @@ import org.scijava.plugin.Parameter;
 
 import javax.swing.*;
 import java.awt.*;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -65,7 +69,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class ImageAlignment extends AbstractContextual implements PlugIn, OnMainDialogEventListener, OnPreviewDialogEventListener, OnAlignDialogEventListener, OnRemoveDialogEventListener {
+public class ImageAlignment extends AbstractContextual implements PlugIn, OnMainDialogEventListener, OnPreviewDialogEventListener, OnAlignDialogEventListener, OnRemoveDialogEventListener, PropertyChangeListener {
   private static final String IMAGES_SCALED_MESSAGE = "Image size too large: image has been scaled for compatibility.";
   private static final String SINGLE_IMAGE_MESSAGE = "Only one image detected in the stack: align operation will be unavailable.";
   private static final String IMAGES_OVERSIZE_MESSAGE = "Cannot open the selected image: image exceed supported dimensions.";
@@ -81,10 +85,9 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
   private static final String CAREFUL_NOW_TITLE = "Careful now";
   private static final String TIFF_EXT = ".tiff";
   private static final String NULL_PATH = "nullnull";
-  private static final String TEMP_PATH = "temp";
   
   static {
-    System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+    ImageAlignment.loadLibrary();
   }
   
   private List<String> tempImages = new ArrayList<>();
@@ -109,6 +112,20 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     plugin.run("");
   }
   
+  private static void loadLibrary() {
+    if (JarService.runningFromJar()) {
+      LoaderStrategy strategy = new LoaderStrategy();
+      try {
+        strategy.load();
+        strategy.loadExtra();
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    } else {
+      System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+    }
+  }
+  
   @Override
   public void onMainDialogEvent(IMainDialogEvent dialogEvent) {
     if (image != null) {
@@ -116,76 +133,76 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     }
     switch (dialogEvent.getClass().getSimpleName()) {
       case "PreviewImageEvent":
-        previewImage((PreviewImageEvent) dialogEvent);
+        this.previewImage((PreviewImageEvent) dialogEvent);
         break;
       case "ChangeImageEvent":
-        getChangeImageThread((ChangeImageEvent) dialogEvent);
+        this.getChangeImageThread((ChangeImageEvent) dialogEvent);
         break;
       case "DeleteRoiEvent":
-        deleteRoi((DeleteRoiEvent) dialogEvent);
+        this.deleteRoi((DeleteRoiEvent) dialogEvent);
         break;
       case "AddRoiEvent":
-        addRoi((AddRoiEvent) dialogEvent);
+        this.addRoi((AddRoiEvent) dialogEvent);
         break;
       case "SelectedRoiEvent":
-        handleSelectedRoi((SelectedRoiEvent) dialogEvent);
+        this.handleSelectedRoi((SelectedRoiEvent) dialogEvent);
         break;
       case "SelectedRoiFromOvalEvent":
-        handleSelectedRoiFromOval((SelectedRoiFromOvalEvent) dialogEvent);
+        this.handleSelectedRoiFromOval((SelectedRoiFromOvalEvent) dialogEvent);
         break;
       case "DeselectedRoiEvent":
-        handleDeselectedRoi((DeselectedRoiEvent) dialogEvent);
+        this.handleDeselectedRoi((DeselectedRoiEvent) dialogEvent);
         break;
       case "AlignEvent":
-        align((AlignEvent) dialogEvent);
+        this.align((AlignEvent) dialogEvent);
         break;
       case "AutoAlignEvent":
-        autoAlign((AutoAlignEvent) dialogEvent);
+        this.autoAlign((AutoAlignEvent) dialogEvent);
         break;
       case "OpenFileEvent":
       case "ExitEvent":
-        openOrExitEventHandler(dialogEvent);
+        this.openOrExitEventHandler(dialogEvent);
         break;
       case "OpenAboutEvent":
         this.aboutDialog.setVisible(true);
         break;
       case "MovedRoiEvent":
-        handleMovedRoi();
+        this.handleMovedRoi();
         break;
       case "AddFileEvent":
-        addFile((AddFileEvent) dialogEvent);
+        this.addFile((AddFileEvent) dialogEvent);
         break;
       case "CopyCornersEvent":
-        copyCorners();
+        this.copyCorners();
         break;
       case "RemoveImageEvent":
-        if (this.removeImageDialog == null || !this.removeImageDialog.isVisible()) {
-          removeImage();
+        if (this.getRemoveImageDialog() == null || !this.getRemoveImageDialog().isVisible()) {
+          this.removeImage();
         }
         break;
       default:
-        logService.log(LogLevel.ERROR, "No event known was called");
+        this.logService.log(LogLevel.ERROR, "No event known was called");
         break;
     }
   }
   
   private void handleMovedRoi() {
-    this.mainDialog.refreshROIList(image.getManager());
-    if (previewDialog != null) this.previewDialog.drawRois();
+    this.getMainDialog().refreshROIList(this.getImage().getManager());
+    if (this.getPreviewDialog() != null) this.getPreviewDialog().drawRois();
   }
   
   private void removeImage() {
-    this.loadingDialog.showDialog();
+    this.getLoadingDialog().showDialog();
     Utilities.setTimeout(() -> {
       this.removeImageDialog = new RemoveImageDialog(this.manager.getImageFiles(), this);
-      this.removeImageDialog.setVisible(true);
-      this.loadingDialog.hideDialog();
-      this.loadingDialog.requestFocus();
+      this.getRemoveImageDialog().setVisible(true);
+      this.getLoadingDialog().hideDialog();
+      this.getLoadingDialog().requestFocus();
     }, 20);
   }
   
   private void openOrExitEventHandler(IMainDialogEvent dialogEvent) {
-    boolean roisPresent = manager.getRoiManagers().stream().anyMatch(it -> it.getRoisAsArray().length != 0);
+    boolean roisPresent = this.getManager().getRoiManagers().stream().anyMatch(it -> it.getRoisAsArray().length != 0);
     if (roisPresent && handleRoisPresence(dialogEvent)) {
       if (dialogEvent instanceof OpenFileEvent) {
         String pathFile = promptForFile();
@@ -194,7 +211,6 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
           this.initialize(Collections.singletonList(pathFile));
         }
       }
-      
       if (dialogEvent instanceof ExitEvent) {
         disposeAll();
         System.exit(0);
@@ -204,7 +220,7 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
   
   private boolean handleRoisPresence(IMainDialogEvent dialogEvent) {
     String[] buttons = {"Yes", "No"};
-    String message = dialogEvent instanceof OpenFileEvent ? "This will replace the existing image. Proceed anyway?" : "You will lose the existing added landmarks. Proceed anyway?";
+    String message = dialogEvent instanceof OpenFileEvent ? "This will replace the existing this.getImage(). Proceed anyway?" : "You will lose the existing added landmarks. Proceed anyway?";
     int answer = JOptionPane.showOptionDialog(null, message, CAREFUL_NOW_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, buttons, buttons[1]);
     return answer != 1;
   }
@@ -214,10 +230,10 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     List<Integer> imageIndexes;
     // remove the index of the current image, if present.
     List<Integer> list = new ArrayList<>();
-    for (RoiManager roiManager : manager.getRoiManagers()) {
+    for (RoiManager roiManager : this.getManager().getRoiManagers()) {
       if (roiManager.getRoisAsArray().length != 0) {
-        int index = manager.getRoiManagers().indexOf(roiManager);
-        if (index != manager.getCurrentIndex()) {
+        int index = this.getManager().getRoiManagers().indexOf(roiManager);
+        if (index != this.getManager().getCurrentIndex()) {
           list.add(index);
         }
       }
@@ -229,14 +245,16 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     // n means most certainly "answer"
     int n = JOptionPane.showOptionDialog(new JFrame(), optionList, "Copy from", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, new Object[]{"Copy", "Cancel"}, JOptionPane.YES_OPTION);
     if (n == JOptionPane.YES_OPTION) {
-      RoiManager selectedManager = manager.getRoiManagers().get(imageIndexes.get(optionList.getSelectedIndex()));
-      List<Point> roiPoints = Arrays.stream(selectedManager.getRoisAsArray()).map(roi -> new Point((int) roi.getRotationCenter().xpoints[0], (int) roi.getRotationCenter().ypoints[0])).collect(Collectors.toList());
-      roiPoints.stream().filter(roiCoords -> roiCoords.x < image.getWidth() && roiCoords.y < image.getHeight()).forEach(roiCoords -> this.onMainDialogEvent(new AddRoiEvent(roiCoords)));
+      RoiManager selectedManager = this.getManager().getRoiManagers().get(imageIndexes.get(optionList.getSelectedIndex()));
+      List<Point> roiPoints;
+      roiPoints = Arrays.stream(selectedManager.getRoisAsArray()).map(roi -> new Point((int) roi.getRotationCenter().xpoints[0], (int) roi.getRotationCenter().ypoints[0])).collect(Collectors.toList());
+      roiPoints.stream().filter(roiCoordinates -> roiCoordinates.x < this.getImage().getWidth() && roiCoordinates.y < this.getImage().getHeight()).forEach(roiCoordinates -> this.onMainDialogEvent(new AddRoiEvent(roiCoordinates)));
       
-      if (roiPoints.stream().anyMatch(roiCoords -> roiCoords.x > image.getWidth() || roiCoords.y > image.getHeight()))
+      if (roiPoints.stream().anyMatch(roiCoordinates -> roiCoordinates.x > this.getImage().getWidth() || roiCoordinates.y > this.getImage().getHeight())) {
         JOptionPane.showMessageDialog(null, ROI_NOT_ADDED_MESSAGE, "Warning", JOptionPane.WARNING_MESSAGE);
+      }
       
-      this.image.setCopyCornersMode();
+      this.getImage().setCopyCornersMode();
     }
   }
   
@@ -244,21 +262,21 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     String pathFile = dialogEvent.getFilePath();
     try {
       long memory = ImageFile.estimateMemoryUsage(pathFile);
-      totalMemory += memory;
-      if (totalMemory >= Runtime.getRuntime().maxMemory()) {
+      this.totalMemory += memory;
+      if (this.getTotalMemory() >= Runtime.getRuntime().maxMemory()) {
         JOptionPane.showMessageDialog(null, INSUFFICIENT_MEMORY_MESSAGE, INSUFFICIENT_MEMORY_TITLE, JOptionPane.ERROR_MESSAGE);
       }
-      manager.addFile(pathFile);
+      this.getManager().addFile(pathFile);
     } catch (UnknownFormatException e) {
-      loadingDialog.hideDialog();
+      this.getLoadingDialog().hideDialog();
       JOptionPane.showMessageDialog(null, UNKNOWN_FORMAT_MESSAGE, "Error: unknow format", JOptionPane.ERROR_MESSAGE);
     } catch (Exception e) {
       e.printStackTrace();
     }
-    mainDialog.setPrevImageButtonEnabled(manager.hasPrevious());
-    mainDialog.setNextImageButtonEnabled(manager.hasNext());
-    mainDialog.setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, manager.getCurrentIndex() + 1, manager.getNImages()));
-    refreshRoiGUI();
+    this.getMainDialog().setPrevImageButtonEnabled(this.getManager().hasPrevious());
+    this.getMainDialog().setNextImageButtonEnabled(this.getManager().hasNext());
+    this.getMainDialog().setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, this.getManager().getCurrentIndex() + 1, this.getManager().getNImages()));
+    this.refreshRoiGUI();
   }
   
   /*
@@ -266,7 +284,7 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
    * TODO: refactor codebase when you have time
    **/
   private void autoAlign(AutoAlignEvent event) {
-    AbstractBuilder builder = new FREAKBuilder(this.loadingDialog, this, this.manager, event);
+    AbstractBuilder builder = new FREAKBuilder(this.getLoadingDialog(), this, this.getManager(), event);
     builder.getLoadingDialog().showDialog();
     Utilities.setTimeout(() -> {
       try {
@@ -278,9 +296,8 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     }, 10);
   }
   
-  
   private void align(AlignEvent event) {
-    AbstractBuilder builder = new LeastSquareTransformationBuilder(this.loadingDialog, this.manager, event, this);
+    AbstractBuilder builder = new LeastSquareTransformationBuilder(this.getLoadingDialog(), this.getManager(), event, this);
     builder.getLoadingDialog().showDialog();
     Utilities.setTimeout(() -> {
       try {
@@ -297,9 +314,8 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
   }
   
   private void alignHandler(AbstractBuilder builder) {
-    builder.init();
     builder.setTempImages(this.tempImages);
-    builder.setVirtualStack();
+    builder.init();
     builder.align();
     builder.build();
     this.alignDialog = builder.getAlignDialog();
@@ -307,100 +323,96 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
   }
   
   private void handleDeselectedRoi(DeselectedRoiEvent dialogEvent) {
-    Arrays.stream(image.getManager().getSelectedRoisAsArray()).forEach(roi -> roi.setStrokeColor(Color.BLUE));
-    image.getManager().select(dialogEvent.getRoiIndex());
-    previewDialog.drawRois();
+    Arrays.stream(this.getImage().getManager().getSelectedRoisAsArray()).forEach(roi -> roi.setStrokeColor(Color.BLUE));
+    this.getImage().getManager().select(dialogEvent.getRoiIndex());
+    this.getPreviewDialog().drawRois();
   }
   
   private void handleSelectedRoiFromOval(SelectedRoiFromOvalEvent dialogEvent) {
-    mainDialog.jListRois.setSelectedIndex(dialogEvent.getRoiIndex());
+    this.getMainDialog().jListRois.setSelectedIndex(dialogEvent.getRoiIndex());
   }
   
   private void handleSelectedRoi(SelectedRoiEvent dialogEvent) {
-    Arrays.stream(image.getManager().getSelectedRoisAsArray()).forEach(roi -> roi.setStrokeColor(Color.BLUE));
-    image.getManager().select(dialogEvent.getRoiIndex());
-    image.getRoi().setStrokeColor(Color.yellow);
-    image.updateAndDraw();
-    if (previewDialog != null && previewDialog.isVisible()) {
-      previewDialog.drawRois();
+    Arrays.stream(this.getImage().getManager().getSelectedRoisAsArray()).forEach(roi -> roi.setStrokeColor(Color.BLUE));
+    this.getImage().getManager().select(dialogEvent.getRoiIndex());
+    this.getImage().getRoi().setStrokeColor(Color.yellow);
+    this.getImage().updateAndDraw();
+    if (this.getPreviewDialog() != null && this.getPreviewDialog().isVisible()) {
+      this.getPreviewDialog().drawRois();
     }
   }
   
   private void addRoi(AddRoiEvent dialogEvent) {
     Prefs.useNamesAsLabels = true;
     Prefs.noPointLabels = false;
-    int roiWidth = Math.max(Toolkit.getDefaultToolkit().getScreenSize().width, image.getWidth());
-    roiWidth = (int) (roiWidth * 0.03);
-    OvalRoi outer = new OvalRoi(dialogEvent.getClickCoords().x - (roiWidth / 2), dialogEvent.getClickCoords().y - (roiWidth / 2), roiWidth, roiWidth);
+    final int roiSize = (int) (Math.max(Toolkit.getDefaultToolkit().getScreenSize().width, this.getImage().getWidth()) * 0.03);
+    final OvalRoi outer = new OvalRoi(dialogEvent.getClickCoordinates().x - (roiSize / 2), dialogEvent.getClickCoordinates().y - (roiSize / 2), roiSize, roiSize);
     // get roughly the 0,25% of the width of the image as stroke width of th rois added.
     // If the resultant value is too small, set it as the minimum value
-    int strokeWidth = Math.max((int) (image.getWidth() * 0.0025), 3);
+    final int strokeWidth = Math.max((int) (this.getImage().getWidth() * 0.0025), 3);
     outer.setStrokeWidth(strokeWidth);
     outer.setImage(image);
     outer.setStrokeColor(Color.BLUE);
-    Overlay over = new Overlay();
-    over.drawBackgrounds(false);
+    final Overlay over = new Overlay();
     over.drawLabels(false);
     over.drawNames(true);
-    over.setLabelFontSize(Math.round(strokeWidth * 1f), "scale");
+    over.drawBackgrounds(false);
+    over.setLabelFontSize(Math.round(strokeWidth * 5f), "scale");
     over.setLabelColor(Color.BLUE);
     over.setStrokeWidth((double) strokeWidth);
     over.setStrokeColor(Color.BLUE);
-    outer.setName("•");
     Arrays.stream(image.getManager().getRoisAsArray()).forEach(over::add);
     over.add(outer);
-    image.getManager().setOverlay(over);
-    refreshRoiGUI();
-    refreshRoiGUI();
+    this.getImage().getManager().setOverlay(over);
+    this.refreshRoiGUI();
   }
   
   private void deleteRoi(DeleteRoiEvent dialogEvent) {
-    image.getManager().select(dialogEvent.getRoiIndex());
-    image.getManager().runCommand("Delete");
-    refreshRoiGUI();
+    this.getImage().getManager().select(dialogEvent.getRoiIndex());
+    this.getImage().getManager().runCommand("Delete");
+    this.refreshRoiGUI();
   }
   
-  
   private void getChangeImageThread(ChangeImageEvent dialogEvent) {
-    if (image != null) {
-      image.removeMouseListeners();
+    if (this.getImage() != null) {
+      this.getImage().removeMouseListeners();
     }
-    boolean isNext = dialogEvent.getChangeDirection() == ChangeImageEvent.ChangeDirection.NEXT && !manager.hasNext();
-    boolean isPrevious = dialogEvent.getChangeDirection() == ChangeImageEvent.ChangeDirection.PREV && !manager.hasPrevious();
+    boolean isNext = dialogEvent.getChangeDirection() == ChangeImageEvent.ChangeDirection.NEXT && !this.getManager().hasNext();
+    boolean isPrevious = dialogEvent.getChangeDirection() == ChangeImageEvent.ChangeDirection.PREV && !this.getManager().hasPrevious();
     if (isNext || isPrevious) {
-      this.loadingDialog.hideDialog();
+      this.getLoadingDialog().hideDialog();
     }
-    image = dialogEvent.getChangeDirection() == ChangeImageEvent.ChangeDirection.NEXT ? this.manager.next() : this.manager.previous();
-    if (image != null) {
-      mainDialog.changeImage(image);
-      mainDialog.setPrevImageButtonEnabled(manager.hasPrevious());
-      mainDialog.setNextImageButtonEnabled(manager.hasNext());
-      mainDialog.setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, manager.getCurrentIndex() + 1, manager.getNImages()));
-      image.buildMouseListener();
-      this.loadingDialog.hideDialog();
-      refreshRoiGUI();
-      this.loadingDialog.showDialog();
-      this.loadingDialog.hideDialog();
+    image = dialogEvent.getChangeDirection() == ChangeImageEvent.ChangeDirection.NEXT ? this.getManager().next() : this.getManager().previous();
+    if (this.getImage() != null) {
+      this.getMainDialog().changeImage(this.getImage());
+      this.getMainDialog().setPrevImageButtonEnabled(this.getManager().hasPrevious());
+      this.getMainDialog().setNextImageButtonEnabled(this.getManager().hasNext());
+      this.getMainDialog().setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, this.getManager().getCurrentIndex() + 1, this.getManager().getNImages()));
+      this.getImage().buildMouseListener();
+      this.getLoadingDialog().hideDialog();
+      this.refreshRoiGUI();
+      this.getLoadingDialog().showDialog();
+      this.getLoadingDialog().hideDialog();
     }
   }
   
   private void previewImage(PreviewImageEvent dialogEvent) {
     new Thread(() -> {
       if (!dialogEvent.getValue()) {
-        previewDialog.close();
+        this.getPreviewDialog().close();
         return;
       }
       
       try {
-        this.loadingDialog.showDialog();
-        previewDialog = new PreviewDialog(manager.get(manager.getCurrentIndex()), this, manager.getCurrentIndex(), manager.getNImages(), "Preview Image " + (manager.getCurrentIndex() + 1) + "/" + manager.getNImages());
+        this.getLoadingDialog().showDialog();
+        this.previewDialog = new PreviewDialog(this.getManager().get(this.getManager().getCurrentIndex()), this, this.getManager().getCurrentIndex(), this.getManager().getNImages(), "Preview Image " + (this.getManager().getCurrentIndex() + 1) + "/" + this.getManager().getNImages());
       } catch (Exception e) {
         e.printStackTrace();
       }
-      this.loadingDialog.hideDialog();
-      previewDialog.pack();
-      previewDialog.setVisible(true);
-      previewDialog.drawRois();
+      this.getLoadingDialog().hideDialog();
+      this.getPreviewDialog().pack();
+      this.getPreviewDialog().setVisible(true);
+      this.getPreviewDialog().drawRois();
     }).start();
   }
   
@@ -409,16 +421,16 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     if (dialogEvent instanceof ds4h.dialog.preview.event.ChangeImageEvent) {
       ds4h.dialog.preview.event.ChangeImageEvent event = (ds4h.dialog.preview.event.ChangeImageEvent) dialogEvent;
       new Thread(() -> {
-        WindowManager.setCurrentWindow(image.getWindow());
-        BufferedImage previewImage = manager.get(event.getIndex());
-        previewDialog.changeImage(previewImage, "Preview Image " + (event.getIndex() + 1) + "/" + manager.getNImages());
-        this.loadingDialog.hideDialog();
+        WindowManager.setCurrentWindow(this.getImage().getWindow());
+        BufferedImage previewImage = this.getManager().get(event.getIndex());
+        this.getPreviewDialog().changeImage(previewImage, "Preview Image " + (event.getIndex() + 1) + "/" + this.getManager().getNImages());
+        this.getLoadingDialog().hideDialog();
       }).start();
-      this.loadingDialog.showDialog();
+      this.getLoadingDialog().showDialog();
     }
     
     if (dialogEvent instanceof CloseDialogEvent) {
-      mainDialog.setPreviewWindowCheckBox(false);
+      this.getMainDialog().setPreviewWindowCheckBox(false);
     }
   }
   
@@ -427,20 +439,20 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     if (dialogEvent instanceof SaveEvent) {
       SaveDialog saveDialog = new SaveDialog("Save as", "aligned", TIFF_EXT);
       if (saveDialog.getFileName() == null) {
-        loadingDialog.hideDialog();
+        this.getLoadingDialog().hideDialog();
         return;
       }
       String path = saveDialog.getDirectory() + saveDialog.getFileName();
-      loadingDialog.showDialog();
-      new FileSaver(this.alignDialog.getImagePlus()).saveAsTiff(path);
-      loadingDialog.hideDialog();
+      this.getLoadingDialog().showDialog();
+      new FileSaver(this.getAlignDialog().getImagePlus()).saveAsTiff(path);
+      this.getLoadingDialog().hideDialog();
       JOptionPane.showMessageDialog(null, IMAGE_SAVED_MESSAGE, "Save complete", JOptionPane.INFORMATION_MESSAGE);
       this.alignedImageSaved = true;
     }
     
     if (dialogEvent instanceof ReuseImageEvent) {
       this.disposeAll();
-      this.initialize(Collections.singletonList(tempImages.get(tempImages.size() - 1)));
+      this.initialize(Collections.singletonList(this.getTempImages().get(this.getTempImages().size() - 1)));
     }
     
     if (dialogEvent instanceof ds4h.dialog.align.event.ExitEvent) {
@@ -449,16 +461,16 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
         int answer = JOptionPane.showOptionDialog(null, ALIGNED_IMAGE_NOT_SAVED_MESSAGE, CAREFUL_NOW_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, buttons, buttons[1]);
         if (answer == 1) return;
       }
-      alignDialog.setVisible(false);
-      alignDialog.dispose();
+      this.getAlignDialog().setVisible(false);
+      this.getAlignDialog().dispose();
     }
   }
   
   @Override
   public void onRemoveDialogEvent(IRemoveDialogEvent removeEvent) {
-    if (removeEvent instanceof ds4h.dialog.remove.event.ExitEvent) {
-      removeImageDialog.setVisible(false);
-      removeImageDialog.dispose();
+    if (removeEvent instanceof ExitEvent) {
+      this.getRemoveImageDialog().setVisible(false);
+      this.getRemoveImageDialog().dispose();
     }
     if (removeEvent instanceof ds4h.dialog.remove.event.RemoveImageEvent) {
       int imageFileIndex = ((ds4h.dialog.remove.event.RemoveImageEvent) removeEvent).getImageFileIndex();
@@ -466,11 +478,10 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
       if (this.manager.getImageFiles().size() == 1) {
         String[] buttons = {"Yes", "No"};
         int answer = JOptionPane.showOptionDialog(null, DELETE_ALL_IMAGES, CAREFUL_NOW_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, buttons, buttons[1]);
-        
         if (answer == 0) {
-          String pathFile = promptForFile();
+          String pathFile = this.promptForFile();
           if (pathFile.equals(NULL_PATH)) {
-            disposeAll();
+            this.disposeAll();
             System.exit(0);
             return;
           }
@@ -479,13 +490,13 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
         }
       } else {
         // remove the image selected
-        this.removeImageDialog.removeImageFile(imageFileIndex);
-        this.manager.removeImageFile(imageFileIndex);
-        image = manager.get(manager.getCurrentIndex());
-        mainDialog.changeImage(image);
-        mainDialog.setPrevImageButtonEnabled(manager.hasPrevious());
-        mainDialog.setNextImageButtonEnabled(manager.hasNext());
-        mainDialog.setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, manager.getCurrentIndex() + 1, manager.getNImages()));
+        this.getRemoveImageDialog().removeImageFile(imageFileIndex);
+        this.getManager().removeImageFile(imageFileIndex);
+        image = this.getManager().get(this.getManager().getCurrentIndex());
+        this.getMainDialog().changeImage(image);
+        this.getMainDialog().setPrevImageButtonEnabled(this.getManager().hasPrevious());
+        this.getMainDialog().setNextImageButtonEnabled(this.getManager().hasNext());
+        this.getMainDialog().setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, this.getManager().getCurrentIndex() + 1, this.getManager().getNImages()));
         this.refreshRoiGUI();
       }
     }
@@ -495,18 +506,17 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
    * Refresh all the Roi-based guis in the MainDialog
    */
   private void refreshRoiGUI() {
-    mainDialog.drawRois(image.getManager());
-    if (previewDialog != null && previewDialog.isVisible()) {
-      previewDialog.drawRois();
+    this.getMainDialog().drawRois(this.getImage().getManager());
+    if (this.getPreviewDialog() != null && this.getPreviewDialog().isVisible()) {
+      this.getPreviewDialog().drawRois();
     }
-    // Get the number of rois added in each image. If they are all the same (and at least one is added), we can enable the "align" functionality
+    // Get the number of rois added in each this.getImage(). If they are all the same (and at least one is added), we can enable the "align" functionality
     List<Integer> roisNumber = manager.getRoiManagers().stream().map(roiManager -> roiManager.getRoisAsArray().length).collect(Collectors.toList());
-    boolean alignButtonEnabled = roisNumber.get(0) >= LeastSquareImageTransformation.MINIMUM_ROI_NUMBER && manager.getNImages() > 1 && roisNumber.stream().distinct().count() == 1;
+    boolean alignButtonEnabled = roisNumber.get(0) >= LeastSquareImageTransformation.MINIMUM_ROI_NUMBER && this.getManager().getNImages() > 1 && roisNumber.stream().distinct().count() == 1;
     // check if: the number of images is more than 1, ALL the images has the same number of rois added and the ROI numbers are more than 3
-    mainDialog.setAlignButtonEnabled(alignButtonEnabled);
-    
-    boolean copyCornersEnabled = manager.getRoiManagers().stream().filter(roiManager -> roiManager.getRoisAsArray().length != 0).map(roiManager -> manager.getRoiManagers().indexOf(roiManager)).filter(index -> index != manager.getCurrentIndex()).count() != 0;
-    mainDialog.setCopyCornersEnabled(copyCornersEnabled);
+    this.getMainDialog().setAlignButtonEnabled(alignButtonEnabled);
+    boolean copyCornersEnabled = this.getManager().getRoiManagers().stream().filter(roiManager -> roiManager.getRoisAsArray().length != 0).map(roiManager -> this.getManager().getRoiManagers().indexOf(roiManager)).anyMatch(index -> index != this.getManager().getCurrentIndex());
+    this.getMainDialog().setCopyCornersEnabled(copyCornersEnabled);
   }
   
   /**
@@ -514,36 +524,34 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
    */
   public void initialize(List<String> filePaths) {
     Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
-      this.loadingDialog.hideDialog();
+      this.getLoadingDialog().hideDialog();
       if (e instanceof OutOfMemoryError) {
-        this.loadingDialog.hideDialog();
+        this.getLoadingDialog().hideDialog();
         JOptionPane.showMessageDialog(null, INSUFFICIENT_MEMORY_MESSAGE, INSUFFICIENT_MEMORY_TITLE, JOptionPane.ERROR_MESSAGE);
         System.exit(0);
       }
     });
     this.aboutDialog = new AboutDialog();
     this.loadingDialog = new LoadingDialog();
-    this.loadingDialog.showDialog();
+    this.getLoadingDialog().showDialog();
     alignedImageSaved = false;
-    boolean complete = false;
     try {
       for (String filePath : filePaths) {
         this.showIfMemoryIsInsufficient(filePath);
       }
       manager = new ImagesManager(filePaths);
-      image = manager.next();
+      image = this.getManager().next();
       mainDialog = new MainDialog(image, this);
-      mainDialog.setPrevImageButtonEnabled(manager.hasPrevious());
-      mainDialog.setNextImageButtonEnabled(manager.hasNext());
-      mainDialog.setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, manager.getCurrentIndex() + 1, manager.getNImages()));
-      mainDialog.pack();
-      mainDialog.setVisible(true);
-      this.loadingDialog.hideDialog();
-      if (image.isReduced())
+      this.getMainDialog().setPrevImageButtonEnabled(this.getManager().hasPrevious());
+      this.getMainDialog().setNextImageButtonEnabled(this.getManager().hasNext());
+      this.getMainDialog().setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, this.getManager().getCurrentIndex() + 1, this.getManager().getNImages()));
+      this.getMainDialog().pack();
+      this.getMainDialog().setVisible(true);
+      this.getLoadingDialog().hideDialog();
+      if (this.getImage().isReduced())
         JOptionPane.showMessageDialog(null, IMAGES_SCALED_MESSAGE, "Info", JOptionPane.INFORMATION_MESSAGE);
-      if (manager.getNImages() == 1)
+      if (this.getManager().getNImages() == 1)
         JOptionPane.showMessageDialog(null, SINGLE_IMAGE_MESSAGE, "Warning", JOptionPane.WARNING_MESSAGE);
-      complete = true;
     } catch (ImagesManager.ImageOversizeException e) {
       JOptionPane.showMessageDialog(null, IMAGES_OVERSIZE_MESSAGE);
     } catch (UnknownFormatException | EnumException e) {
@@ -551,23 +559,20 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     } catch (Exception e) {
       e.printStackTrace();
     } finally {
-      this.loadingDialog.hideDialog();
-      if (!complete) {
-        this.run("");
-      }
+      this.getLoadingDialog().hideDialog();
     }
   }
   
   private void showIfMemoryIsInsufficient(String pathFile) throws IOException, FormatException {
     try {
       long memory = ImageFile.estimateMemoryUsage(pathFile);
-      totalMemory += memory;
-      if (totalMemory >= Runtime.getRuntime().maxMemory()) {
+      this.totalMemory += memory;
+      if (this.getTotalMemory() >= Runtime.getRuntime().maxMemory()) {
         JOptionPane.showMessageDialog(null, INSUFFICIENT_MEMORY_MESSAGE, INSUFFICIENT_MEMORY_TITLE, JOptionPane.ERROR_MESSAGE);
         this.run("");
       }
     } catch (UnknownFormatException e) {
-      loadingDialog.hideDialog();
+      this.getLoadingDialog().hideDialog();
       JOptionPane.showMessageDialog(null, UNKNOWN_FORMAT_MESSAGE, UNKNOWN_FORMAT_TITLE, JOptionPane.ERROR_MESSAGE);
     }
   }
@@ -593,18 +598,14 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
    * Dispose all the opened workload objects.
    */
   private void disposeAll() {
-    this.mainDialog.dispose();
-    this.loadingDialog.hideDialog();
-    this.loadingDialog.dispose();
-    if (this.previewDialog != null) this.previewDialog.dispose();
-    if (this.alignDialog != null) this.alignDialog.dispose();
-    if (this.removeImageDialog != null) this.removeImageDialog.dispose();
-    this.manager.dispose();
-    totalMemory = 0;
-  }
-  
-  public List<String> getTempImages() {
-    return this.tempImages;
+    this.getMainDialog().dispose();
+    this.getLoadingDialog().hideDialog();
+    this.getLoadingDialog().dispose();
+    if (this.getPreviewDialog() != null) this.getPreviewDialog().dispose();
+    if (this.getAlignDialog() != null) this.getAlignDialog().dispose();
+    if (this.getRemoveImageDialog() != null) this.getRemoveImageDialog().dispose();
+    this.getManager().dispose();
+    this.totalMemory = 0;
   }
   
   @Override
@@ -624,6 +625,63 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
       }));
     } catch (Exception e) {
       e.printStackTrace();
+    }
+  }
+  
+  private ImagesManager getManager() {
+    return this.manager;
+  }
+  
+  private LoadingDialog getLoadingDialog() {
+    return this.loadingDialog;
+  }
+  
+  private PreviewDialog getPreviewDialog() {
+    return this.previewDialog;
+  }
+  
+  private RemoveImageDialog getRemoveImageDialog() {
+    return this.removeImageDialog;
+  }
+  
+  private AlignDialog getAlignDialog() {
+    return this.alignDialog;
+  }
+  
+  private MainDialog getMainDialog() {
+    return this.mainDialog;
+  }
+  
+  private BufferedImage getImage() {
+    return this.image;
+  }
+  
+  private long getTotalMemory() {
+    return this.totalMemory;
+  }
+  
+  private List<String> getTempImages() {
+    return this.tempImages;
+  }
+  
+  /**
+   * This is a workaround I didn't want to use, but I don't have much time left
+   * If you are the developer that has to refactor all this
+   * (Refactor is a bit of a stretch, I know)
+   * Take into account also this.
+   * What was done here can't be called MVC at all, so you must do it.
+   * Note: In a good MVC you can change the View part with what you can see fit,
+   * without having to adapt the Model and Controller parts
+   *
+   * @param evt
+   */
+  @Override
+  public void propertyChange(PropertyChangeEvent evt) {
+    if (evt.getPropertyName().equals("updatedImage")) {
+      String oldPath = (String) evt.getOldValue();
+      String newPath = (String) evt.getNewValue();
+      this.getTempImages().remove(oldPath);
+      this.getTempImages().add(newPath);
     }
   }
 }
