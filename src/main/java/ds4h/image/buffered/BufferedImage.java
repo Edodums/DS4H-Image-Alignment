@@ -145,6 +145,6 @@ public class BufferedImage extends ImagePlus {
   }
   
   public void removeMouseListeners() {
-    Arrays.stream(this.getCanvas().getMouseListeners()).forEachOrdered(it ->this.getCanvas().removeMouseListener(mouseAdapter));
+    Arrays.stream(this.getCanvas().getMouseListeners()).forEachOrdered(it -> this.getCanvas().removeMouseListener(mouseAdapter));
   }
 }

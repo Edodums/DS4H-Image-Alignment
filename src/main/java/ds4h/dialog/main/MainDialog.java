@@ -221,7 +221,6 @@ public class MainDialog extends ImageWindow {
     jListRois.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     jListRoisModel = new DefaultListModel<>();
     jListRois.setModel(jListRoisModel);
-    MainDialog root = this;
     jListRois.setSelectionModel(new DefaultListSelectionModel() {
       // Thanks to https://stackoverflow.com/a/31336378/1306679
       @Override
@@ -231,10 +230,6 @@ public class MainDialog extends ImageWindow {
           btnDeleteRoi.setEnabled(true);
           super.setSelectionInterval(startIndex, endIndex);
         }
-      }
-      
-      private boolean multipleItemsCurrentlyAreSelected() {
-        return getMinSelectionIndex() != getMaxSelectionIndex();
       }
     });
     MenuBar menuBar = new MenuBar();
@@ -314,16 +309,15 @@ public class MainDialog extends ImageWindow {
   }
   
   /**
-   * Update the Roi List based on the given RoiManager istance
-   *
+   * Update the Roi List based on the given RoiManager instance
+   * // THIS PIECE OF CODE IS REPEATED A LOT OF TIMES //
+   * // TAKE IT INTO ACCOUNT WHEN MAKING THE SERIOUS REFACTORING //
    * @param manager
    */
   public void drawRois(RoiManager manager) {
     Prefs.useNamesAsLabels = true;
     Prefs.noPointLabels = false;
     int strokeWidth = Math.max((int) (image.getWidth() * 0.0025), 3);
-    int roiWidth = Math.max(Toolkit.getDefaultToolkit().getScreenSize().width, image.getWidth());
-    roiWidth = (int) (roiWidth * 0.03);
     Overlay over = new Overlay();
     over.drawBackgrounds(false);
     over.drawLabels(false);
@@ -370,42 +364,42 @@ public class MainDialog extends ImageWindow {
     this.btnCopyCorners.setEnabled(enabled);
   }
   
-  public void setListSelectedIndex(int index) {
-    this.jListRois.setSelectedIndex(index);
-  }
-  
   @Override
   public void setTitle(String title) {
     super.setTitle(DIALOG_STATIC_TITLE + " " + title);
   }
   
+  // a simple debounce variable that can put "on hold" a key_release event
+  private boolean debounce = false;
   private class KeyboardEventDispatcher implements KeyEventDispatcher {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
       boolean isReleased = e.getID() == KeyEvent.KEY_RELEASED;
-      
-      new Thread(() -> {
-        try {
-          ChangeImageEvent.ChangeDirection direction = null;
-          if (isReleased && e.getKeyCode() == KeyEvent.VK_C && mouseOverCanvas) {
-            Point clickCoordinates = getCanvas().getCursorLoc();
-            eventListener.onMainDialogEvent(new AddRoiEvent(clickCoordinates));
+      if (isReleased && e.getKeyCode() == KeyEvent.VK_C && mouseOverCanvas) {
+        Point clickCoordinates = getCanvas().getCursorLoc();
+        eventListener.onMainDialogEvent(new AddRoiEvent(clickCoordinates));
+      }
+      if (!debounce) {
+        debounce = true;
+        new Thread(() -> {
+          try {
+            ChangeImageEvent.ChangeDirection direction = null;
+            if (isReleased && e.getKeyCode() == KeyEvent.VK_A) {
+              direction = ChangeImageEvent.ChangeDirection.PREV;
+            }
+            if (isReleased && e.getKeyCode() == KeyEvent.VK_D) {
+              direction = ChangeImageEvent.ChangeDirection.NEXT;
+            }
+            if (direction != null) {
+              eventListener.onMainDialogEvent(new ChangeImageEvent(direction));
+              e.consume();
+            }
+          } catch (Exception e1) {
+            e1.printStackTrace();
           }
-          if (isReleased && e.getKeyCode() == KeyEvent.VK_A) {
-            direction = ChangeImageEvent.ChangeDirection.PREV;
-          }
-          if (isReleased && e.getKeyCode() == KeyEvent.VK_D) {
-            direction = ChangeImageEvent.ChangeDirection.NEXT;
-          }
-          if (direction != null) {
-            eventListener.onMainDialogEvent(new ChangeImageEvent(direction));
-            e.consume();
-          }
-        } catch (Exception e1) {
-          e1.printStackTrace();
-        }
-      }).start();
-      return true;
+        }).start();
+      }
+      return false;
     }
   }
 }

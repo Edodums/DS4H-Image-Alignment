@@ -33,7 +33,7 @@ public class ImageFile {
   public ImageFile(String pathFile) throws IOException, FormatException {
     this.pathFile = pathFile;
     this.roiManagers = new ArrayList<>();
-    generateImageReader();
+    this.generateImageReader();
   }
   
   public static long estimateMemoryUsage(String pathFile) throws IOException, FormatException {
@@ -73,6 +73,12 @@ public class ImageFile {
     IntStream.range(0, bufferedEditorImageReader.getImageCount()).mapToObj(i -> new RoiManager(false)).forEachOrdered(this.roiManagers::add);
   }
   
+  /**
+   * Yeah, getNImages is get numbers of images,
+   * because calling it getImagesCounter was too much
+   * of a work and no, I don't want to change
+   * @return counter
+   */
   public int getNImages() {
     return this.bufferedEditorImageReader.getImageCount();
   }
@@ -143,8 +149,9 @@ public class ImageFile {
       // lazy initialization
       if (this.cached_thumbs == null) {
         this.cached_thumbs = new ArrayList<>();
-        for (int i = 0; i < bufferedEditorImageReader.getImageCount(); i++)
+        for (int i = 0; i < bufferedEditorImageReader.getImageCount(); i++) {
           cached_thumbs.add(this.bufferedEditorImageReader.openThumbImage(i));
+        }
       }
     } catch (FormatException | IOException e) {
       e.printStackTrace();
@@ -153,6 +160,6 @@ public class ImageFile {
   }
   
   public String getPathFile() {
-    return pathFile;
+    return this.pathFile;
   }
 }
