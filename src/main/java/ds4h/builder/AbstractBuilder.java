@@ -62,58 +62,58 @@ public abstract class AbstractBuilder {
   }
   
   public LoadingDialog getLoadingDialog() {
-    return loadingDialog;
-  }
-  
-  public OnAlignDialogEventListener getListener() {
-    return listener;
-  }
-  
-  public ImagesManager getManager() {
-    return manager;
-  }
-  
-  public VirtualStack getVirtualStack() {
-    return virtualStack;
-  }
-  
-  public ImagePlus getTransformedImagesStack() {
-    return transformedImagesStack;
-  }
-  
-  public void setTransformedImagesStack(ImagePlus transformedImagesStack) {
-    this.transformedImagesStack = transformedImagesStack;
+    return this.loadingDialog;
   }
   
   public List<String> getTempImages() {
-    return tempImages;
+    return this.tempImages;
   }
   
   public void setTempImages(List<String> tempImages) {
     this.tempImages = tempImages;
   }
   
-  public IMainDialogEvent getEvent() {
-    return event;
-  }
-  
   public AlignDialog getAlignDialog() {
-    return alignDialog;
+    return this.alignDialog;
   }
   
-  public void setAlignDialog(AlignDialog alignDialog) {
+  protected void setAlignDialog(AlignDialog alignDialog) {
     this.alignDialog = alignDialog;
   }
   
-  public void setVirtualStack() {
-    this.virtualStack = new VirtualStack(this.getMaximumSize().width, this.getMaximumSize().height, ColorModel.getRGBdefault(), IJ.getDir(TEMP_PATH));
+  protected OnAlignDialogEventListener getListener() {
+    return this.listener;
   }
   
-  public Dimension getMaximumSize() {
-    return maximumSize;
+  protected ImagesManager getManager() {
+    return this.manager;
   }
   
-  public void setMaximumSize(Dimension maximumSize) {
+  protected VirtualStack getVirtualStack() {
+    return this.virtualStack;
+  }
+  
+  protected Dimension getMaximumSize() {
+    return this.maximumSize;
+  }
+  
+  protected void setMaximumSize(Dimension maximumSize) {
     this.maximumSize = maximumSize;
+  }
+  
+  protected ImagePlus getTransformedImagesStack() {
+    return this.transformedImagesStack;
+  }
+  
+  protected void setTransformedImagesStack(ImagePlus transformedImagesStack) {
+    this.transformedImagesStack = transformedImagesStack;
+  }
+  
+  protected IMainDialogEvent getEvent() {
+    return this.event;
+  }
+  
+  protected void setVirtualStack() {
+    this.virtualStack = new VirtualStack(this.getMaximumSize().width, this.getMaximumSize().height, ColorModel.getRGBdefault(), IJ.getDir(TEMP_PATH));
   }
 }

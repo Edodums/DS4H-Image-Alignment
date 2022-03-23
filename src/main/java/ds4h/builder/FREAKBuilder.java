@@ -50,8 +50,6 @@ import static org.opencv.imgcodecs.Imgcodecs.imread;
  * https://github.com/Edodums/DS4H-Image-Alignment/issues
  */
 public class FREAKBuilder extends AbstractBuilder {
-  final StarDetector descriptor = StarDetector.create();
-  final FREAK extractor = FREAK.create();
   private final List<Mat> images = new ArrayList<>();
   private final Map<Long, String> pathMap = new HashMap<>();
   
@@ -91,17 +89,22 @@ public class FREAKBuilder extends AbstractBuilder {
         List<MatOfDMatch> knnMatches = new ArrayList<>();
         matcher.knnMatch(firstDescriptor, secondDescriptor, knnMatches, 2);
         List<DMatch> goodMatches = getGoodMatches(knnMatches);
+        // Below four matches the images couldn't be related
         if (goodMatches.size() > 4) {
           final MatOfPoint2f points = new MatOfPoint2f(this.getPointsArray(firstImage));
           Mat dest = new Mat();
+          // Check directly the Javadoc, to learn more
           Core.perspectiveTransform(points, dest, this.getHomography(goodMatches, firstKeyPoints.toList(), secondKeyPoints.toList()));
           final Mat perspectiveM = Imgproc.getPerspectiveTransform(points, dest);
           Mat warpedImage = new Mat();
+          // Literally takes the secondImage, the perspective transformation matrix, the size of the first image, then warps the second image to fit the first, at least that's what I think is happening
           Imgproc.warpPerspective(secondImage, warpedImage, perspectiveM, new Size(firstImage.width(), firstImage.height()), Imgproc.WARP_INVERSE_MAP, Core.BORDER_CONSTANT);
+          // not the nicest solution, but obviously the image's data address changes after but the image it's the same, so to retrieve the same path I had to do this
           this.replaceKey(secondImage.dataAddr(), warpedImage.dataAddr());
+          // then to all the things need to create a virtual stack of images
           this.newProcessHandler(warpedImage);
         } else {
-          System.out.println("Not enough matches");
+          IJ.showMessage("Not enough matches");
         }
       }
     } catch (Exception e) {
@@ -168,7 +171,7 @@ public class FREAKBuilder extends AbstractBuilder {
     if (type == CV_8UC1) {
       result = makeByteProcessor(image);
     } else {
-      System.out.println("Not implemented");
+      IJ.showMessage("Not supported for now");
     }
     return new ImagePlus("", result);
   }
@@ -195,12 +198,14 @@ public class FREAKBuilder extends AbstractBuilder {
   
   private Mat getDescriptor(Mat image, MatOfKeyPoint keyPoints) {
     final Mat tempDescriptor = new Mat();
+    final FREAK extractor = FREAK.create();
     extractor.compute(image, keyPoints, tempDescriptor);
     return tempDescriptor;
   }
   
   private MatOfKeyPoint getKeypoint(Mat image) {
     final MatOfKeyPoint tempKeypoint = new MatOfKeyPoint();
+    final StarDetector descriptor = StarDetector.create();
     descriptor.detect(image, tempKeypoint);
     return tempKeypoint;
   }

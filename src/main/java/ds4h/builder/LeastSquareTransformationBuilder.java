@@ -53,7 +53,7 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
     this.setMaximumSize(new Dimension());
     this.setSourceImage(true);
     this.setOffsets();
-    this.updateFinalStack();
+    this.initFinalStack();
   }
   
   @Override
@@ -61,7 +61,7 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
     for (int index = 0; index < this.getManager().getNImages(); index++) {
       if (index == this.getSourceImageIndex()) continue;
       ImageProcessor newProcessor = new ColorProcessor(this.getMaximumSize().width, this.getMaximumSize().height);
-      ImagePlus transformedImage = LeastSquareImageTransformation.transform(this.getManager().get(index, true), getSourceImage(), true);
+      ImagePlus transformedImage = LeastSquareImageTransformation.transform(this.getManager().get(index, true), this.getSourceImage(), true);
       BufferedImage transformedOriginalImage = this.getManager().get(index, true);
       this.setEdges(transformedOriginalImage);
       int offsetXOriginal = 0;
@@ -74,7 +74,7 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
         offsetXTransformed = Math.abs(offsetsX.get(index));
       }
       offsetXTransformed += maxOffsetX;
-      int difference = (int) (managers.get(maxOffsetYIndex).getRoisAsArray()[0].getYBase() - managers.get(index).getRoisAsArray()[0].getYBase());
+      int difference = (int) (this.getManagers().get(maxOffsetYIndex).getRoisAsArray()[0].getYBase() - this.getManagers().get(index).getRoisAsArray()[0].getYBase());
       newProcessor.insert(transformedOriginalImage.getProcessor(), offsetXOriginal, difference);
       if (transformedImage != null) {
         newProcessor.insert(transformedImage.getProcessor(), offsetXTransformed, (maxOffsetY));
@@ -104,11 +104,11 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
     } else {
       BufferedImage sourceImg = this.getManager().get(0, true);
       VirtualStack virtualStack = new VirtualStack(sourceImg.getWidth(), sourceImg.getHeight(), ColorModel.getRGBdefault(), IJ.getDir(TEMP_PATH));
-      addToVirtualStack(sourceImg, virtualStack);
+      this.addToVirtualStack(sourceImg, virtualStack);
       for (int index = 1; index < this.getManager().getNImages(); index++) {
         ImagePlus transformedImage = LeastSquareImageTransformation.transform(this.getManager().get(index, true), sourceImg, event.isRotate());
         if (transformedImage != null) {
-          addToVirtualStack(transformedImage, virtualStack);
+          this.addToVirtualStack(transformedImage, virtualStack);
         }
       }
     }
@@ -129,7 +129,7 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
     super.setMaximumSize(maximumSize);
   }
   
-  private void updateFinalStack() {
+  private Dimension getFinalStack() {
     Dimension finalStack = new Dimension(this.getMaximumSize().width, this.getMaximumSize().height);
     finalStack.width = finalStack.width + this.getMaxOffsetX();
     finalStack.height += this.getSourceImage().getHeight() == this.getMaximumSize().height ? this.getMaxOffsetY() : 0;
@@ -137,11 +137,17 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
     if (((double) finalStack.width * finalStack.height) > Integer.MAX_VALUE) {
       JOptionPane.showMessageDialog(null, IMAGE_SIZE_TOO_BIG, IMAGE_SIZE_TOO_BIG_TITLE, JOptionPane.ERROR_MESSAGE);
       this.getLoadingDialog().hideDialog(); // take care of this
-      return;
+      return null;
     }
+    
+    return finalStack;
+  }
+  
+  private ImageProcessor getFinalStackImageProcessor(Dimension finalStack) {
     final ImageProcessor processor;
     processor = this.getSourceImage().getProcessor().createProcessor(finalStack.width, finalStack.height);
     processor.insert(this.getSourceImage().getProcessor(), this.getMaxOffsetX(), this.getMaxOffsetY());
+    return processor;
   }
   
   private void setOffsets() {
@@ -189,6 +195,7 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
     return this.sourceImage;
   }
   
+  @SuppressWarnings("SameParameterValue")
   private void setSourceImage(boolean isWholeSlide) {
     this.sourceImage = this.getManager().get(this.getSourceImageIndex(), isWholeSlide);
   }
@@ -235,6 +242,15 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
   
   private List<RoiManager> getManagers() {
     return this.managers;
+  }
+  
+  private void initFinalStack() {
+    Dimension finalStack = this.getFinalStack();
+    if (finalStack != null) {
+      final ImageProcessor processor = this.getFinalStackImageProcessor(finalStack);
+      this.setVirtualStack();
+      this.addToVirtualStack(new ImagePlus("", processor), this.getVirtualStack());
+    }
   }
   
   private void setEdges(BufferedImage transformedOriginalImage) {
