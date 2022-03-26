@@ -32,7 +32,6 @@ import ds4h.dialog.remove.event.IRemoveDialogEvent;
 import ds4h.image.buffered.BufferedImage;
 import ds4h.image.manager.ImagesManager;
 import ds4h.image.model.ImageFile;
-import ds4h.services.JarService;
 import ds4h.services.library.LoaderStrategy;
 import ds4h.utils.Utilities;
 import ij.Prefs;
@@ -48,7 +47,6 @@ import loci.common.enumeration.EnumException;
 import loci.formats.FormatException;
 import loci.formats.UnknownFormatException;
 import net.imagej.ImageJ;
-import org.opencv.core.Core;
 import org.scijava.AbstractContextual;
 import org.scijava.log.LogLevel;
 import org.scijava.log.LogService;
@@ -113,16 +111,12 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
   }
   
   private static void loadLibrary() {
-    if (JarService.runningFromJar()) {
-      LoaderStrategy strategy = new LoaderStrategy();
-      try {
-        strategy.load();
-        strategy.loadExtra();
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
-    } else {
-      System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+    LoaderStrategy strategy = new LoaderStrategy();
+    try {
+      strategy.load();
+      strategy.loadExtra();
+    } catch (IOException e) {
+      e.printStackTrace();
     }
   }
   
@@ -231,11 +225,12 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     // remove the index of the current image, if present.
     List<Integer> list = new ArrayList<>();
     for (RoiManager roiManager : this.getManager().getRoiManagers()) {
-      if (roiManager.getRoisAsArray().length != 0) {
-        int index = this.getManager().getRoiManagers().indexOf(roiManager);
-        if (index != this.getManager().getCurrentIndex()) {
-          list.add(index);
-        }
+      if (roiManager.getRoisAsArray().length == 0) {
+        continue;
+      }
+      int index = this.getManager().getRoiManagers().indexOf(roiManager);
+      if (index != this.getManager().getCurrentIndex()) {
+        list.add(index);
       }
     }
     imageIndexes = list;
@@ -249,11 +244,9 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
       List<Point> roiPoints;
       roiPoints = Arrays.stream(selectedManager.getRoisAsArray()).map(roi -> new Point((int) roi.getRotationCenter().xpoints[0], (int) roi.getRotationCenter().ypoints[0])).collect(Collectors.toList());
       roiPoints.stream().filter(roiCoordinates -> roiCoordinates.x < this.getImage().getWidth() && roiCoordinates.y < this.getImage().getHeight()).forEach(roiCoordinates -> this.onMainDialogEvent(new AddRoiEvent(roiCoordinates)));
-      
       if (roiPoints.stream().anyMatch(roiCoordinates -> roiCoordinates.x > this.getImage().getWidth() || roiCoordinates.y > this.getImage().getHeight())) {
         JOptionPane.showMessageDialog(null, ROI_NOT_ADDED_MESSAGE, "Warning", JOptionPane.WARNING_MESSAGE);
       }
-      
       this.getImage().setCopyCornersMode();
     }
   }

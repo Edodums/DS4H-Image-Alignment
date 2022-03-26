@@ -87,7 +87,11 @@ public class FREAKBuilder extends AbstractBuilder {
         }
         // match descriptors and filter to avoid false positives
         List<MatOfDMatch> knnMatches = new ArrayList<>();
-        matcher.knnMatch(firstDescriptor, secondDescriptor, knnMatches, 2);
+        try {
+          matcher.knnMatch(firstDescriptor, secondDescriptor, knnMatches, 2);
+        } catch (Exception e) {
+          IJ.showMessage("Check all your images, one of them seems to have not valuable matches for our algorithm");
+        }
         List<DMatch> goodMatches = getGoodMatches(knnMatches);
         // Below four matches the images couldn't be related
         if (goodMatches.size() > 4) {
@@ -188,8 +192,8 @@ public class FREAKBuilder extends AbstractBuilder {
     for (ImageFile imageFile : this.getManager().getImageFiles()) {
       try {
         Mat matImage = imread(imageFile.getPathFile(), IMREAD_GRAYSCALE);
-        pathMap.put(matImage.dataAddr(), imageFile.getPathFile());
-        images.add(matImage);
+        this.pathMap.put(matImage.dataAddr(), imageFile.getPathFile());
+        this.images.add(matImage);
       } catch (Exception e) {
         e.printStackTrace();
       }
