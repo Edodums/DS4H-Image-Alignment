@@ -3,6 +3,7 @@ package ds4h.image.manager;
 import ds4h.image.buffered.BufferedImage;
 import ds4h.image.model.ImageFile;
 import ds4h.observer.Observable;
+import ds4h.services.FileService;
 import ij.ImageListener;
 import ij.ImagePlus;
 import ij.io.FileSaver;
@@ -14,6 +15,8 @@ import java.beans.PropertyChangeSupport;
 import java.io.File;
 import java.io.IOException;
 import java.text.MessageFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ListIterator;
@@ -25,6 +28,8 @@ import java.util.ListIterator;
  * I want to finish my things, I don't want always to fix things, come on.
  */
 public class ImagesManager implements ListIterator<ImagePlus>, Observable {
+  // the YYYY-MM-DD format grants to the user the fact that the sorting can be done always by the name
+  private final static String TODAY_FORMAT = "yyyy-MM-dd";
   private final PropertyChangeSupport support = new PropertyChangeSupport(this);
   private final List<ImageFile> imageFiles = new ArrayList<>();
   private int imageIndex;
@@ -80,10 +85,20 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
   }
   
   private String saveUpdatedImage(ImagePlus imagePlus, ImageFile file) {
-    String baseDir = this.getDirFromPath(file.getPathFile());
-    String path = String.format("%s%d.tiff", baseDir, imagePlus.getProcessor().hashCode());
+    final String baseDir = this.getDirFromPath(file.getPathFile());
+    // Thanks to this you can have a more organized folder
+    final String todayDir = this.getTodayDate() + "/";
+    FileService.createDirectoryIfNotExist(baseDir + todayDir);
+    final String dir = baseDir + todayDir;
+    String path = String.format("%s%d.tiff", dir, imagePlus.getProcessor().hashCode());
     new FileSaver(imagePlus).saveAsTiff(path);
     return path;
+  }
+  
+  private String getTodayDate() {
+    LocalDate dateObj = LocalDate.now();
+    DateTimeFormatter formatter = DateTimeFormatter.ofPattern(TODAY_FORMAT);
+    return dateObj.format(formatter);
   }
   
   private String getDirFromPath(String path) {
