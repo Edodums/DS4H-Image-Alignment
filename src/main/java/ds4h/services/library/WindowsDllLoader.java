@@ -10,7 +10,6 @@
 package ds4h.services.library;
 
 import ds4h.image.registration.ImageAlignment;
-
 import java.io.InputStream;
 import java.util.List;
 

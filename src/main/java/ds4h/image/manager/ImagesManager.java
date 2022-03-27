@@ -90,7 +90,7 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
     final String todayDir = this.getTodayDate() + "/";
     FileService.createDirectoryIfNotExist(baseDir + todayDir);
     final String dir = baseDir + todayDir;
-    String path = String.format("%s%d.tiff", dir, imagePlus.getProcessor().hashCode());
+    String path = String.format("%s%d%s.tiff", dir, imagePlus.getProcessor().hashCode(), this.getTodayDate());
     new FileSaver(imagePlus).saveAsTiff(path);
     return path;
   }

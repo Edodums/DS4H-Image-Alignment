@@ -1,28 +1,24 @@
 package ds4h.dialog.main;
 
-import fiji.util.gui.OverlayedImageCanvas;
 import ij.ImagePlus;
-
+import ij.gui.ImageCanvas;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 
-public class CustomCanvas extends OverlayedImageCanvas {
+public class CustomCanvas extends ImageCanvas {
   public CustomCanvas(ImagePlus imp) {
     super(imp);
-    Dimension dim = new Dimension(Math.min(512, imp.getWidth()), Math.min(512, imp.getHeight()));
+    final Dimension dim = new Dimension(Math.min(512, imp.getWidth()), Math.min(512, imp.getHeight()));
     setMinimumSize(dim);
     setSize(dim.width, dim.height);
     setDstDimensions(dim.width, dim.height);
     addKeyListener(new KeyAdapter() {
+      @Override
       public void keyReleased(KeyEvent ke) {
         repaint();
       }
     });
-  }
-  
-  //@Override
-  public void setDrawingSize(int w, int h) {
   }
   
   public void setDstDimensions(int width, int height) {
@@ -39,16 +35,16 @@ public class CustomCanvas extends OverlayedImageCanvas {
     repaint();
   }
   
-  //@Override
+  @Override
   public void paint(Graphics g) {
-    Rectangle srcRect = getSrcRect();
-    double mag = getMagnification();
-    int dw = (int) (srcRect.width * mag);
-    int dh = (int) (srcRect.height * mag);
+    final Rectangle srcRect = getSrcRect();
+    final double mag = getMagnification();
+    final int dw = (int) (srcRect.width * mag);
+    final int dh = (int) (srcRect.height * mag);
     g.setClip(0, 0, dw, dh);
     super.paint(g);
-    int w = getWidth();
-    int h = getHeight();
+    final int w = getWidth();
+    final int h = getHeight();
     g.setClip(0, 0, w, h);
     // Paint away the outside
     g.setColor(getBackground());

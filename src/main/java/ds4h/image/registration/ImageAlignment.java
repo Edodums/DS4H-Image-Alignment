@@ -34,6 +34,7 @@ import ds4h.image.manager.ImagesManager;
 import ds4h.image.model.ImageFile;
 import ds4h.services.library.LoaderStrategy;
 import ds4h.utils.Utilities;
+import ij.IJ;
 import ij.Prefs;
 import ij.WindowManager;
 import ij.gui.OvalRoi;
@@ -41,16 +42,10 @@ import ij.gui.Overlay;
 import ij.io.FileSaver;
 import ij.io.OpenDialog;
 import ij.io.SaveDialog;
-import ij.plugin.PlugIn;
 import ij.plugin.frame.RoiManager;
 import loci.common.enumeration.EnumException;
 import loci.formats.FormatException;
 import loci.formats.UnknownFormatException;
-import net.imagej.ImageJ;
-import org.scijava.AbstractContextual;
-import org.scijava.log.LogLevel;
-import org.scijava.log.LogService;
-import org.scijava.plugin.Parameter;
 
 import javax.swing.*;
 import java.awt.*;
@@ -67,7 +62,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class ImageAlignment extends AbstractContextual implements PlugIn, OnMainDialogEventListener, OnPreviewDialogEventListener, OnAlignDialogEventListener, OnRemoveDialogEventListener, PropertyChangeListener {
+public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialogEventListener, OnAlignDialogEventListener, OnRemoveDialogEventListener, PropertyChangeListener {
   private static final String IMAGES_SCALED_MESSAGE = "Image size too large: image has been scaled for compatibility.";
   private static final String SINGLE_IMAGE_MESSAGE = "Only one image detected in the stack: align operation will be unavailable.";
   private static final String IMAGES_OVERSIZE_MESSAGE = "Cannot open the selected image: image exceed supported dimensions.";
@@ -99,16 +94,6 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
   private RemoveImageDialog removeImageDialog;
   private boolean alignedImageSaved = false;
   private long totalMemory = 0;
-  @Parameter
-  private LogService logService;
-  
-  public static void main(final String... args) {
-    ImageJ ij = new ImageJ();
-    ij.launch(args);
-    ImageAlignment plugin = new ImageAlignment();
-    plugin.setContext(ij.getContext());
-    plugin.run("");
-  }
   
   private static void loadLibrary() {
     LoaderStrategy strategy = new LoaderStrategy();
@@ -175,7 +160,7 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
         }
         break;
       default:
-        this.logService.log(LogLevel.ERROR, "No event known was called");
+        IJ.showMessage("No event known was called");
         break;
     }
   }
@@ -601,7 +586,7 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
     this.totalMemory = 0;
   }
   
-  @Override
+  
   public void run(String s) {
     try {
       List<String> filePaths = this.promptForFiles();
@@ -617,7 +602,7 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
         });
       }));
     } catch (Exception e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
   }
   
@@ -666,13 +651,13 @@ public class ImageAlignment extends AbstractContextual implements PlugIn, OnMain
    * Note: In a good MVC you can change the View part with what you can see fit,
    * without having to adapt the Model and Controller parts
    *
-   * @param evt
+   * @param event - Event that is launched by the observable
    */
   @Override
-  public void propertyChange(PropertyChangeEvent evt) {
-    if (evt.getPropertyName().equals("updatedImage")) {
-      String oldPath = (String) evt.getOldValue();
-      String newPath = (String) evt.getNewValue();
+  public void propertyChange(PropertyChangeEvent event) {
+    if (event.getPropertyName().equals("updatedImage")) {
+      String oldPath = (String) event.getOldValue();
+      String newPath = (String) event.getNewValue();
       this.getTempImages().remove(oldPath);
       this.getTempImages().add(newPath);
     }
