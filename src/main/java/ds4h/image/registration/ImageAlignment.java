@@ -39,6 +39,7 @@ import ij.Prefs;
 import ij.WindowManager;
 import ij.gui.OvalRoi;
 import ij.gui.Overlay;
+import ij.gui.Roi;
 import ij.io.FileSaver;
 import ij.io.OpenDialog;
 import ij.io.SaveDialog;
@@ -86,6 +87,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   private List<String> tempImages = new ArrayList<>();
   private ImagesManager manager;
   private BufferedImage image = null;
+  private BufferedImage originalImage = null;
   private MainDialog mainDialog;
   private PreviewDialog previewDialog;
   private AlignDialog alignDialog;
@@ -107,8 +109,8 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   
   @Override
   public void onMainDialogEvent(IMainDialogEvent dialogEvent) {
-    if (image != null) {
-      WindowManager.setCurrentWindow(image.getWindow());
+    if (this.image != null) {
+      WindowManager.setCurrentWindow(this.image.getWindow());
     }
     switch (dialogEvent.getClass().getSimpleName()) {
       case "PreviewImageEvent":
@@ -120,8 +122,14 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
       case "DeleteRoiEvent":
         this.deleteRoi((DeleteRoiEvent) dialogEvent);
         break;
+      case "DeleteRoisEvent":
+        this.deleteRois((DeleteRoisEvent) dialogEvent);
+        break;
       case "AddRoiEvent":
         this.addRoi((AddRoiEvent) dialogEvent);
+        break;
+      case "SelectedRoisEvent":
+        this.handleSelectedRois((SelectedRoisEvent) dialogEvent);
         break;
       case "SelectedRoiEvent":
         this.handleSelectedRoi((SelectedRoiEvent) dialogEvent);
@@ -314,6 +322,25 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     Arrays.stream(this.getImage().getManager().getSelectedRoisAsArray()).forEach(roi -> roi.setStrokeColor(Color.BLUE));
     this.getImage().getManager().select(dialogEvent.getRoiIndex());
     this.getImage().getRoi().setStrokeColor(Color.yellow);
+    this.drawAfterHandlingRois();
+  }
+  
+  private void handleSelectedRois(SelectedRoisEvent dialogEvent) {
+    final int[] rois = dialogEvent.getSelectedIndices();
+    final Roi[] roiArrays = this.getImage().getManager().getRoisAsArray();
+    for (int index = 0; index < roiArrays.length; index++) {
+      int finalIndex = index;
+      this.getImage().getManager().select(finalIndex);
+      if (Arrays.stream(rois).anyMatch(roiIndex -> finalIndex == roiIndex)) {
+        this.getImage().getRoi().setStrokeColor(Color.YELLOW);
+      } else {
+        this.getImage().getRoi().setStrokeColor(Color.BLUE);
+      }
+    }
+    this.drawAfterHandlingRois();
+  }
+  
+  private void drawAfterHandlingRois() {
     this.getImage().updateAndDraw();
     if (this.getPreviewDialog() != null && this.getPreviewDialog().isVisible()) {
       this.getPreviewDialog().drawRois();
@@ -329,7 +356,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     // If the resultant value is too small, set it as the minimum value
     final int strokeWidth = Math.max((int) (this.getImage().getWidth() * 0.0025), 3);
     outer.setStrokeWidth(strokeWidth);
-    outer.setImage(image);
+    outer.setImage(this.image);
     outer.setStrokeColor(Color.BLUE);
     final Overlay over = new Overlay();
     over.drawLabels(false);
@@ -339,9 +366,10 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     over.setLabelColor(Color.BLUE);
     over.setStrokeWidth((double) strokeWidth);
     over.setStrokeColor(Color.BLUE);
-    Arrays.stream(image.getManager().getRoisAsArray()).forEach(over::add);
+    Arrays.stream(this.image.getManager().getRoisAsArray()).forEach(over::add);
     over.add(outer);
     this.getImage().getManager().setOverlay(over);
+    this.getOriginalImage().getManager().setOverlay(over);
     this.refreshRoiGUI();
   }
   
@@ -349,6 +377,14 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     this.getImage().getManager().select(dialogEvent.getRoiIndex());
     this.getImage().getManager().runCommand("Delete");
     this.refreshRoiGUI();
+  }
+  
+  private void deleteRois(DeleteRoisEvent dialogEvent) {
+    Arrays.stream(dialogEvent.getRois()).forEachOrdered(roi -> {
+      this.getImage().getManager().select(roi);
+      this.getImage().getManager().runCommand("Delete");
+      this.refreshRoiGUI();
+    });
   }
   
   private void getChangeImageThread(ChangeImageEvent dialogEvent) {
@@ -360,7 +396,8 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     if (isNext || isPrevious) {
       this.getLoadingDialog().hideDialog();
     }
-    image = dialogEvent.getChangeDirection() == ChangeImageEvent.ChangeDirection.NEXT ? this.getManager().next() : this.getManager().previous();
+    this.image = dialogEvent.getChangeDirection() == ChangeImageEvent.ChangeDirection.NEXT ? this.getManager().next() : this.getManager().previous();
+    this.originalImage = this.getManager().getOriginal(this.getManager().getCurrentIndex(), false);
     if (this.getImage() != null) {
       this.getMainDialog().changeImage(this.getImage());
       this.getMainDialog().setPrevImageButtonEnabled(this.getManager().hasPrevious());
@@ -434,7 +471,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     }
     
     if (dialogEvent instanceof ds4h.dialog.align.event.ExitEvent) {
-      if (!alignedImageSaved) {
+      if (!this.alignedImageSaved) {
         String[] buttons = {"Yes", "No"};
         int answer = JOptionPane.showOptionDialog(null, ALIGNED_IMAGE_NOT_SAVED_MESSAGE, CAREFUL_NOW_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, buttons, buttons[1]);
         if (answer == 1) return;
@@ -470,8 +507,9 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
         // remove the image selected
         this.getRemoveImageDialog().removeImageFile(imageFileIndex);
         this.getManager().removeImageFile(imageFileIndex);
-        image = this.getManager().get(this.getManager().getCurrentIndex());
-        this.getMainDialog().changeImage(image);
+        this.image = this.getManager().get(this.getManager().getCurrentIndex());
+        this.originalImage = this.getManager().get(this.getManager().getCurrentIndex());
+        this.getMainDialog().changeImage(this.image);
         this.getMainDialog().setPrevImageButtonEnabled(this.getManager().hasPrevious());
         this.getMainDialog().setNextImageButtonEnabled(this.getManager().hasNext());
         this.getMainDialog().setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, this.getManager().getCurrentIndex() + 1, this.getManager().getNImages()));
@@ -512,14 +550,15 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     this.aboutDialog = new AboutDialog();
     this.loadingDialog = new LoadingDialog();
     this.getLoadingDialog().showDialog();
-    alignedImageSaved = false;
+    this.alignedImageSaved = false;
     try {
       for (String filePath : filePaths) {
         this.showIfMemoryIsInsufficient(filePath);
       }
-      manager = new ImagesManager(filePaths);
-      image = this.getManager().next();
-      mainDialog = new MainDialog(image, this);
+      this.manager = new ImagesManager(filePaths);
+      this.image = this.getManager().next();
+      this.originalImage = this.getManager().getOriginal(this.getManager().getCurrentIndex(), false);
+      this.mainDialog = new MainDialog(this.image, this);
       this.getMainDialog().setPrevImageButtonEnabled(this.getManager().hasPrevious());
       this.getMainDialog().setNextImageButtonEnabled(this.getManager().hasNext());
       this.getMainDialog().setTitle(MessageFormat.format(MAIN_DIALOG_TITLE_PATTERN, this.getManager().getCurrentIndex() + 1, this.getManager().getNImages()));
@@ -632,6 +671,10 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   
   private BufferedImage getImage() {
     return this.image;
+  }
+  
+  private BufferedImage getOriginalImage() {
+    return this.originalImage;
   }
   
   private long getTotalMemory() {

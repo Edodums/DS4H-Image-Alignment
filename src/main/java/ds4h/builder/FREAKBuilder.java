@@ -112,7 +112,7 @@ public class FREAKBuilder extends AbstractBuilder {
         }
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      IJ.showMessage("Not all the images will be put in the aligned stack, something went wrong, check your image because it seems that we couldn't find a relation");
     }
   }
   

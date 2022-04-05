@@ -15,11 +15,12 @@ import java.beans.PropertyChangeSupport;
 import java.io.File;
 import java.io.IOException;
 import java.text.MessageFormat;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.stream.Collectors;
 
 /**
  * ListIterator of ImagePlus that has imagesFiles
@@ -29,23 +30,36 @@ import java.util.ListIterator;
  */
 public class ImagesManager implements ListIterator<ImagePlus>, Observable {
   // the YYYY-MM-DD format grants to the user the fact that the sorting can be done always by the name
-  private final static String TODAY_FORMAT = "yyyy-MM-dd";
+  private final static String DATE_YMD_FORMAT = "yyyy-MM-dd";
+  private final static String DATE_HMS_FORMAT = "HH-mm-ss";
   private final PropertyChangeSupport support = new PropertyChangeSupport(this);
   private final List<ImageFile> imageFiles = new ArrayList<>();
+  private final List<ImageFile> originalImageFiles = new ArrayList<>();
   private int imageIndex;
-  private int currentIndex;
   
   public ImagesManager(List<String> filesPath) throws ImageOversizeException, FormatException, IOException {
     this.imageIndex = -1;
     for (String filePath : filesPath) {
       this.addFile(filePath);
+      this.addFileToOriginalList(filePath);
     }
   }
   
-  public void addFile(String pathFile) throws IOException, FormatException, ImageOversizeException {
+  public void addFile(String pathFile) throws IOException, FormatException {
     ImageFile imageFile = new ImageFile(pathFile);
     this.getImageFiles().add(imageFile);
     this.addListener(imageFile);
+  }
+  
+  private void addFile(String pathFile, int index) throws IOException, FormatException {
+    ImageFile imageFile = new ImageFile(pathFile);
+    this.getImageFiles().add(index, imageFile);
+    this.addListener(imageFile);
+  }
+  
+  private void addFileToOriginalList(String path) throws IOException, FormatException {
+    ImageFile imageFile = new ImageFile(path);
+    this.getOriginalImageFiles().add(imageFile);
   }
   
   private void addListener(ImageFile file) {
@@ -73,13 +87,14 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
   
   private void handleUpdatedImageChanges(ImagePlus imagePlus, ImageFile file) {
     String path = this.saveUpdatedImage(imagePlus, file);
-    // delete from stack the old one
-    this.getImageFiles().remove(this.currentIndex + 1);
-    // add new one
     try {
-      this.addFile(path);
-      firePropertyChange("updatedImage", file.getPathFile(), path);
-    } catch (IOException | FormatException | ImageOversizeException e) {
+      int indexToRemove = this.imageIndex;
+      // delete from stack the old one
+      this.removeImageFile(indexToRemove);
+      // add new one
+      this.addFile(path, indexToRemove);
+      this.firePropertyChange("updatedImage", file.getPathFile(), path);
+    } catch (IOException | FormatException e) {
       e.printStackTrace();
     }
   }
@@ -87,17 +102,17 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
   private String saveUpdatedImage(ImagePlus imagePlus, ImageFile file) {
     final String baseDir = this.getDirFromPath(file.getPathFile());
     // Thanks to this you can have a more organized folder
-    final String todayDir = this.getTodayDate() + "/";
+    final String todayDir = this.getTodayDate(DATE_YMD_FORMAT) + "/";
     FileService.createDirectoryIfNotExist(baseDir + todayDir);
     final String dir = baseDir + todayDir;
-    String path = String.format("%s%d%s.tiff", dir, imagePlus.getProcessor().hashCode(), this.getTodayDate());
+    String path = String.format("%s%d-%s.tiff", dir, imagePlus.getProcessor().hashCode(), this.getTodayDate(DATE_HMS_FORMAT));
     new FileSaver(imagePlus).saveAsTiff(path);
     return path;
   }
   
-  private String getTodayDate() {
-    LocalDate dateObj = LocalDate.now();
-    DateTimeFormatter formatter = DateTimeFormatter.ofPattern(TODAY_FORMAT);
+  private String getTodayDate(String pattern) {
+    LocalDateTime dateObj = LocalDateTime.now();
+    DateTimeFormatter formatter = DateTimeFormatter.ofPattern(pattern);
     return dateObj.format(formatter);
   }
   
@@ -109,25 +124,27 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
     return path;
   }
   
-  private BufferedImage getImage(int index, boolean wholeSlide) {
+  private BufferedImage getImage(int index, boolean wholeSlide, boolean isOriginal) {
     int progressive = 0;
     ImageFile imageFile = null;
-    for (int i = 0; i < this.getImageFiles().size(); i++) {
-      if (progressive + this.getImageFiles().get(i).getNImages() > index) {
-        imageFile = this.getImageFiles().get(i);
+    List<ImageFile> imageFiles = isOriginal ? new ArrayList<>(this.getOriginalImageFiles()) : new ArrayList<>(this.getImageFiles());
+    for (int i = 0; i < imageFiles.size(); i++) {
+      if (progressive + imageFiles.get(i).getNImages() > index) {
+        imageFile = imageFiles.get(i);
         break;
       }
-      progressive += this.getImageFiles().get(i).getNImages();
+      progressive += imageFiles.get(i).getNImages();
     }
     try {
       if (index == -1) {
         index = 0; // Just an ugly patch
       }
       if (imageFile != null) {
-        this.currentIndex = index - progressive;
-        final BufferedImage image = imageFile.getImage(this.currentIndex, wholeSlide);
+        final BufferedImage image = imageFile.getImage(index - progressive, wholeSlide);
         image.setFilePath(imageFile.getPathFile());
-        image.setTitle(MessageFormat.format("Editor Image {0}/{1}", index + 1, this.getNImages()));
+        if (!isOriginal) {
+          image.setTitle(MessageFormat.format("Editor Image {0}/{1}", index + 1, this.getNImages()));
+        }
         return image;
       }
     } catch (Exception e) {
@@ -147,7 +164,7 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
       return null;
     }
     this.imageIndex++;
-    return getImage(this.getImageIndex(), false);
+    return this.getImage(this.getImageIndex(), false, false);
   }
   
   @Override
@@ -161,7 +178,7 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
       return null;
     }
     this.imageIndex--;
-    return getImage(this.getImageIndex(), false);
+    return getImage(this.getImageIndex(), false, false);
   }
   
   @Override
@@ -209,17 +226,23 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
   }
   
   public BufferedImage get(int index) {
-    return this.getImage(index, false);
+    return this.getImage(index, false, false);
   }
   
   public BufferedImage get(int index, boolean wholeSlide) {
-    return this.getImage(index, wholeSlide);
+    return this.getImage(index, wholeSlide, false);
+  }
+  
+  public BufferedImage getOriginal(int index, boolean wholeSlide) {
+    return this.getImage(index, wholeSlide, true);
   }
   
   public List<RoiManager> getRoiManagers() {
-    List<RoiManager> result = new ArrayList<>();
-    this.getImageFiles().forEach(imageFile -> result.addAll(imageFile.getRoiManagers()));
-    return result;
+    return this.getImageFiles()
+          .stream()
+          .map(ImageFile::getRoiManagers)
+          .flatMap(List::stream)
+          .collect(Collectors.toList());
   }
   
   // ?? Unused ??
@@ -235,7 +258,7 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
   
   public List<Dimension> getImagesDimensions() {
     List<Dimension> dimensions;
-    dimensions = this.getImageFiles().stream().reduce(new ArrayList<>(), (accDimensions, imageFile) -> {
+    dimensions = this.getOriginalImageFiles().stream().reduce(new ArrayList<>(), (accDimensions, imageFile) -> {
       accDimensions.addAll(imageFile.getImagesDimensions());
       return accDimensions;
     }, (accumulated, value) -> accumulated);
@@ -244,6 +267,10 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
   
   public List<ImageFile> getImageFiles() {
     return this.imageFiles;
+  }
+  
+  public List<ImageFile> getOriginalImageFiles() {
+    return this.originalImageFiles;
   }
   
   /**

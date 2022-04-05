@@ -2,6 +2,7 @@ package ds4h.builder;
 
 import ds4h.dialog.align.AlignDialog;
 import ds4h.dialog.align.OnAlignDialogEventListener;
+import ds4h.dialog.align.setting.SettingDialog;
 import ds4h.dialog.loading.LoadingDialog;
 import ds4h.dialog.main.event.AlignEvent;
 import ds4h.dialog.main.event.IMainDialogEvent;
@@ -21,6 +22,7 @@ import ij.process.ImageProcessor;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.ColorModel;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -32,6 +34,7 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
   private List<RoiManager> managers;
   private List<Integer> offsetsX;
   private List<Integer> offsetsY;
+  private SettingDialog settingDialog;
   private BufferedImage sourceImage;
   private Integer maxOffsetX;
   private Integer maxOffsetY;
@@ -54,6 +57,19 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
     this.setSourceImage(true);
     this.setOffsets();
     this.initFinalStack();
+    this.showSettingDialog();
+  }
+  
+  private void showSettingDialog() {
+    try {
+      SwingUtilities.invokeAndWait(() -> {
+        settingDialog = new SettingDialog(new JFrame(), "Align Settings", true);
+        settingDialog.getOkButton().addActionListener(e -> settingDialog.dispose());
+        settingDialog.init();
+      });
+    } catch (InterruptedException | InvocationTargetException e) {
+      IJ.showMessage("Something is not right, sorry, contact the Developer");
+    }
   }
   
   @Override
@@ -61,8 +77,8 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
     for (int index = 0; index < this.getManager().getNImages(); index++) {
       if (index == this.getSourceImageIndex()) continue;
       ImageProcessor newProcessor = new ColorProcessor(this.getMaximumSize().width, this.getMaximumSize().height);
-      ImagePlus transformedImage = LeastSquareImageTransformation.transform(this.getManager().get(index, true), this.getSourceImage(), true);
-      BufferedImage transformedOriginalImage = this.getManager().get(index, true);
+      ImagePlus transformedImage = LeastSquareImageTransformation.transform(this.getManager().getOriginal(index, true), this.getSourceImage(), this.getSettingDialog().getEvent());
+      BufferedImage transformedOriginalImage = this.getManager().getOriginal(index, true);
       this.setEdges(transformedOriginalImage);
       int offsetXOriginal = 0;
       if (this.offsetsX.get(index) < 0) {
@@ -102,11 +118,11 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
       }
       this.getLoadingDialog().hideDialog();
     } else {
-      BufferedImage sourceImg = this.getManager().get(0, true);
+      BufferedImage sourceImg = this.getManager().getOriginal(0, true);
       VirtualStack virtualStack = new VirtualStack(sourceImg.getWidth(), sourceImg.getHeight(), ColorModel.getRGBdefault(), IJ.getDir(TEMP_PATH));
       this.addToVirtualStack(sourceImg, virtualStack);
       for (int index = 1; index < this.getManager().getNImages(); index++) {
-        ImagePlus transformedImage = LeastSquareImageTransformation.transform(this.getManager().get(index, true), sourceImg, event.isRotate());
+        ImagePlus transformedImage = LeastSquareImageTransformation.transform(this.getManager().getOriginal(index, true), sourceImg, this.getSettingDialog().getEvent());
         if (transformedImage != null) {
           this.addToVirtualStack(transformedImage, virtualStack);
         }
@@ -139,7 +155,6 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
       this.getLoadingDialog().hideDialog(); // take care of this
       return null;
     }
-    
     return finalStack;
   }
   
@@ -197,7 +212,7 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
   
   @SuppressWarnings("SameParameterValue")
   private void setSourceImage(boolean isWholeSlide) {
-    this.sourceImage = this.getManager().get(this.getSourceImageIndex(), isWholeSlide);
+    this.sourceImage = this.getManager().getOriginal(this.getSourceImageIndex(), isWholeSlide);
   }
   
   private Integer getMaxOffsetX() {
@@ -242,6 +257,10 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
   
   private List<RoiManager> getManagers() {
     return this.managers;
+  }
+  
+  private SettingDialog getSettingDialog() {
+    return this.settingDialog;
   }
   
   private void initFinalStack() {
