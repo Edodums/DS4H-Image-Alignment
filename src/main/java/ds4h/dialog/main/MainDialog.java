@@ -47,6 +47,7 @@ public class MainDialog extends ImageWindow {
   // a simple debounce variable that can put "on hold" a key_release event
   private boolean debounce = false;
   private Rectangle2D.Double lastBound;
+  private Roi lastRoi;
   
   public MainDialog(BufferedImage plus, OnMainDialogEventListener listener) {
     super(plus, new CustomCanvas(plus));
@@ -272,38 +273,45 @@ public class MainDialog extends ImageWindow {
   
   private void listenerROI() {
     Roi.addRoiListener((imagePlus, event) -> {
-      if (event != RoiListener.MOVED) return;
+      if (event != RoiListener.MOVED) {
+        return;
+      }
       final int[] indices = jListRois.getSelectedIndices();
       // IF MORE THAN ONE IS SELECTED IN JLIST THEN APPLY TRANSLATION TO ALL AT ONCE
       if (indices.length > 1) {
         // FIND THE ROI THAT HAS BEEN CLICKED DIRECTLY
         final Roi selectedRoi = imagePlus.getRoi();
         final Rectangle2D.Double bounds = selectedRoi.getFloatBounds();
-        // NOT THE BEST PIECE OF CODE, I'M SORRY, I'LL COME UP WITH SOMETHING BETTER IF I HAVE TIME
         Roi[] roisAsArray = image.getManager().getRoisAsArray();
+        if (isNotTheSameRoi(selectedRoi)) {
+          lastBound = null;
+        }
         if (lastBound == null) {
           lastBound = (Rectangle2D.Double) bounds.clone();
         }
         final double translationX = bounds.getX() - lastBound.getX();
         final double translationY = bounds.getY() - lastBound.getY();
-        if (checkPreviousPosition(bounds)) {
-          System.out.println(translationX + " -> translationX " + translationY + " -> translationY " + bounds + " -> bounds " + lastBound + " -> lastboud ");
+        if (isNotTheSameBounds(bounds)) {
           lastBound = (Rectangle2D.Double) bounds.clone();
           handleMultipleRoisTranslation(translationX, translationY, roisAsArray, indices);
         }
+        lastRoi = selectedRoi;
       }
     });
   }
   
-  private boolean checkPreviousPosition(Rectangle2D bounds) {
+  private boolean isNotTheSameBounds(Rectangle2D bounds) {
     return !Objects.equals(bounds, this.lastBound);
+  }
+  
+  private boolean isNotTheSameRoi(Roi selectedRoi) {
+    return !Objects.equals(selectedRoi, this.lastRoi);
   }
   
   private void handleMultipleRoisTranslation(double translationX, double translationY, Roi[] roisAsArray, int[] indices) {
     // THEN REGISTER THE CHANGE FOR ALL
     for (int index : indices) {
       final Roi roi = roisAsArray[index];
-      if (roi.equals(getImagePlus().getRoi())) continue;
       final Rectangle2D.Double bounds = roi.getFloatBounds();
       roi.setLocation(bounds.x + translationX, bounds.y + translationY);
       final Rectangle2D.Double finalBounds = roi.getFloatBounds();
