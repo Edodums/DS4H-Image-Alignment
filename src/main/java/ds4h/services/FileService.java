@@ -12,6 +12,7 @@ package ds4h.services;
 import ij.IJ;
 
 import javax.imageio.ImageIO;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -20,10 +21,8 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.CodeSource;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.List;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -32,6 +31,16 @@ public class FileService {
   private static final String FILE_PROTOCOL = "file:" + File.separator + File.separator + File.separator;
   
   private FileService() {
+  }
+  
+  public static List<String> promptForFiles() {
+    FileDialog fileDialog = new FileDialog((Frame) null);
+    fileDialog.setMultipleMode(true);
+    fileDialog.setMode(FileDialog.LOAD);
+    fileDialog.setResizable(true);
+    // Note: Other options must be put before this line, otherwise they won't be applied
+    fileDialog.setVisible(true);
+    return Arrays.stream(fileDialog.getFiles()).map(File::getPath).collect(Collectors.toList());
   }
   
   public static Set<String> getFilesInJarFromDirectory(String directoryPath) throws IOException {

@@ -57,7 +57,7 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
     this.addListener(imageFile);
   }
   
-  private void addFileToOriginalList(String path) throws IOException, FormatException {
+  public void addFileToOriginalList(String path) throws IOException, FormatException {
     ImageFile imageFile = new ImageFile(path);
     this.getOriginalImageFiles().add(imageFile);
   }

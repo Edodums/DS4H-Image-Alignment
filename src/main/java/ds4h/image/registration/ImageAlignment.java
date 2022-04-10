@@ -32,6 +32,7 @@ import ds4h.dialog.remove.event.IRemoveDialogEvent;
 import ds4h.image.buffered.BufferedImage;
 import ds4h.image.manager.ImagesManager;
 import ds4h.image.model.ImageFile;
+import ds4h.services.FileService;
 import ds4h.services.library.LoaderStrategy;
 import ds4h.utils.Utilities;
 import ij.IJ;
@@ -52,10 +53,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -234,15 +232,33 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     // n means most certainly "answer"
     int n = JOptionPane.showOptionDialog(new JFrame(), optionList, "Copy from", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, new Object[]{"Copy", "Cancel"}, JOptionPane.YES_OPTION);
     if (n == JOptionPane.YES_OPTION) {
+      BufferedImage chosenImage = this.getManager().get(optionList.getSelectedIndex());
+      double ratioOfChosenImage = this.getImageRatio(chosenImage);
+      double ratioOfCurrentImage = this.getImageRatio(this.getImage());
+      
       RoiManager selectedManager = this.getManager().getRoiManagers().get(imageIndexes.get(optionList.getSelectedIndex()));
       List<Point> roiPoints;
-      roiPoints = Arrays.stream(selectedManager.getRoisAsArray()).map(roi -> new Point((int) roi.getRotationCenter().xpoints[0], (int) roi.getRotationCenter().ypoints[0])).collect(Collectors.toList());
-      roiPoints.stream().filter(roiCoordinates -> roiCoordinates.x < this.getImage().getWidth() && roiCoordinates.y < this.getImage().getHeight()).forEach(roiCoordinates -> this.onMainDialogEvent(new AddRoiEvent(roiCoordinates)));
+      roiPoints = Arrays.stream(selectedManager.getRoisAsArray()).map(roi -> this.convertPointRatio(new Point((int) roi.getRotationCenter().xpoints[0], (int) roi.getRotationCenter().ypoints[0]), ratioOfChosenImage, ratioOfCurrentImage)).collect(Collectors.toList());
+      roiPoints.stream().filter(roiCoordinates -> roiCoordinates.x < this.getImage().getWidth() && roiCoordinates.y < this.getImage().getHeight())
+            .forEach(roiCoordinates -> this.onMainDialogEvent(new AddRoiEvent(roiCoordinates)));
+      
       if (roiPoints.stream().anyMatch(roiCoordinates -> roiCoordinates.x > this.getImage().getWidth() || roiCoordinates.y > this.getImage().getHeight())) {
         JOptionPane.showMessageDialog(null, ROI_NOT_ADDED_MESSAGE, "Warning", JOptionPane.WARNING_MESSAGE);
       }
       this.getImage().setCopyCornersMode();
     }
+  }
+  
+  private double getImageRatio(BufferedImage image) {
+    return (double) image.getWidth() / (double) image.getHeight();
+  }
+  
+  private Point convertPointRatio(Point point, double previousRatio, double currentRatio) {
+    Point convertedPoint = new Point();
+    double x = (point.getX() * currentRatio) / previousRatio;
+    double y = (point.getY() * currentRatio) / previousRatio;
+    convertedPoint.setLocation(x, y);
+    return convertedPoint;
   }
   
   private void addFile(AddFileEvent dialogEvent) {
@@ -254,9 +270,10 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
         JOptionPane.showMessageDialog(null, INSUFFICIENT_MEMORY_MESSAGE, INSUFFICIENT_MEMORY_TITLE, JOptionPane.ERROR_MESSAGE);
       }
       this.getManager().addFile(pathFile);
+      this.getManager().addFileToOriginalList(pathFile);
     } catch (UnknownFormatException e) {
       this.getLoadingDialog().hideDialog();
-      JOptionPane.showMessageDialog(null, UNKNOWN_FORMAT_MESSAGE, "Error: unknow format", JOptionPane.ERROR_MESSAGE);
+      JOptionPane.showMessageDialog(null, UNKNOWN_FORMAT_MESSAGE, UNKNOWN_FORMAT_TITLE, JOptionPane.ERROR_MESSAGE);
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -606,16 +623,6 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     return (dir + name);
   }
   
-  private List<String> promptForFiles() {
-    FileDialog fileDialog = new FileDialog((Frame) null);
-    fileDialog.setMultipleMode(true);
-    fileDialog.setMode(FileDialog.LOAD);
-    fileDialog.setResizable(true);
-    // Note: Other options must be put before this line, otherwise they won't be applied
-    fileDialog.setVisible(true);
-    return Arrays.stream(fileDialog.getFiles()).map(File::getPath).collect(Collectors.toList());
-  }
-  
   /**
    * Dispose all the opened workload objects.
    */
@@ -633,10 +640,12 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   
   public void run(String s) {
     try {
-      List<String> filePaths = this.promptForFiles();
+      List<String> filePaths = FileService.promptForFiles();
       filePaths.removeIf(filePath -> filePath.equals(NULL_PATH));
       this.initialize(filePaths);
-      Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      // THIS PIECE OF CODE CAN'T WORK LIKE THIS ( THE TEMP FILES ARE USED AFTER THE ALIGNMENT )
+      // FIND A WAY TO AVOID THIS ( like clearing the usages of images, maybe setImage(null)  )
+      /*Runtime.getRuntime().addShutdownHook(new Thread(() -> {
         this.getTempImages().forEach(tempImage -> {
           try {
             Files.deleteIfExists(Paths.get(tempImage));
@@ -644,7 +653,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
             e.printStackTrace();
           }
         });
-      }));
+      }));*/
     } catch (Exception e) {
       IJ.showMessage(e.getMessage());
     }
