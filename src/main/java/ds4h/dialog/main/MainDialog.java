@@ -8,6 +8,7 @@ import ij.Prefs;
 import ij.gui.ImageWindow;
 import ij.gui.Overlay;
 import ij.gui.Roi;
+import ij.gui.RoiListener;
 import ij.plugin.Zoom;
 import ij.plugin.frame.RoiManager;
 
@@ -17,9 +18,11 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
+import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.text.MessageFormat;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 import static javax.swing.SwingConstants.LEFT;
@@ -43,6 +46,7 @@ public class MainDialog extends ImageWindow {
   private Rectangle oldRect = null;
   // a simple debounce variable that can put "on hold" a key_release event
   private boolean debounce = false;
+  private Rectangle2D.Double lastBound;
   
   public MainDialog(BufferedImage plus, OnMainDialogEventListener listener) {
     super(plus, new CustomCanvas(plus));
@@ -190,11 +194,13 @@ public class MainDialog extends ImageWindow {
     // Markers addition handlers
     KeyboardFocusManager manager = KeyboardFocusManager.getCurrentKeyboardFocusManager();
     manager.addKeyEventDispatcher(new KeyboardEventDispatcher());
+    this.listenerROI();
     canvas.addMouseMotionListener(new MouseMotionAdapter() {
       @Override
       public void mouseDragged(MouseEvent e) {
         super.mouseDragged(e);
         // Check if the Rois in the image have changed position by user input; if so, update the list and notify the controller
+        if (jListRois.getSelectedIndices().length > 1) return;
         Rectangle bounds = getImagePlus().getRoi().getBounds();
         if (!bounds.equals(oldRect)) {
           oldRect = (Rectangle) bounds.clone();
@@ -220,8 +226,14 @@ public class MainDialog extends ImageWindow {
     this.jListRoisModel = new DefaultListModel<>();
     this.jListRois.setModel(this.jListRoisModel);
     this.jListRois.addListSelectionListener(e -> {
-      this.eventListener.onMainDialogEvent(new SelectedRoisEvent(this.jListRois.getSelectedIndices()));
-      this.btnDeleteRoi.setEnabled(jListRois.getSelectedIndices().length != 0);
+      final int[] indices = this.jListRois.getSelectedIndices();
+      if (indices.length > 1) {
+        this.eventListener.onMainDialogEvent(new SelectedRoisEvent(indices));
+      }
+      if (indices.length == 1) {
+        this.eventListener.onMainDialogEvent(new SelectedRoiEvent(indices[0]));
+      }
+      this.btnDeleteRoi.setEnabled(indices.length != 0);
     });
     final MenuBar menuBar = new MenuBar();
     final Menu fileMenu = new Menu("File");
@@ -257,6 +269,48 @@ public class MainDialog extends ImageWindow {
     new Zoom().run(SCALE_OPTION);
     this.pack();
   }
+  
+  private void listenerROI() {
+    Roi.addRoiListener((imagePlus, event) -> {
+      if (event != RoiListener.MOVED) return;
+      final int[] indices = jListRois.getSelectedIndices();
+      // IF MORE THAN ONE IS SELECTED IN JLIST THEN APPLY TRANSLATION TO ALL AT ONCE
+      if (indices.length > 1) {
+        // FIND THE ROI THAT HAS BEEN CLICKED DIRECTLY
+        final Roi selectedRoi = imagePlus.getRoi();
+        final Rectangle2D.Double bounds = selectedRoi.getFloatBounds();
+        // NOT THE BEST PIECE OF CODE, I'M SORRY, I'LL COME UP WITH SOMETHING BETTER IF I HAVE TIME
+        Roi[] roisAsArray = image.getManager().getRoisAsArray();
+        if (lastBound == null) {
+          lastBound = (Rectangle2D.Double) bounds.clone();
+        }
+        final double translationX = bounds.getX() - lastBound.getX();
+        final double translationY = bounds.getY() - lastBound.getY();
+        if (checkPreviousPosition(bounds)) {
+          System.out.println(translationX + " -> translationX " + translationY + " -> translationY " + bounds + " -> bounds " + lastBound + " -> lastboud ");
+          lastBound = (Rectangle2D.Double) bounds.clone();
+          handleMultipleRoisTranslation(translationX, translationY, roisAsArray, indices);
+        }
+      }
+    });
+  }
+  
+  private boolean checkPreviousPosition(Rectangle2D bounds) {
+    return !Objects.equals(bounds, this.lastBound);
+  }
+  
+  private void handleMultipleRoisTranslation(double translationX, double translationY, Roi[] roisAsArray, int[] indices) {
+    // THEN REGISTER THE CHANGE FOR ALL
+    for (int index : indices) {
+      final Roi roi = roisAsArray[index];
+      if (roi.equals(getImagePlus().getRoi())) continue;
+      final Rectangle2D.Double bounds = roi.getFloatBounds();
+      roi.setLocation(bounds.x + translationX, bounds.y + translationY);
+      final Rectangle2D.Double finalBounds = roi.getFloatBounds();
+      jListRoisModel.set(index, MessageFormat.format("{0} - {1},{2}", index + 1, finalBounds.x, finalBounds.y));
+    }
+  }
+  
   
   /**
    * Change the actual image displayed in the main view, based on the given BufferedImage istance
@@ -331,9 +385,13 @@ public class MainDialog extends ImageWindow {
   
   public void refreshROIList(RoiManager manager) {
     this.jListRoisModel.removeAllElements();
-    int idx = 0;
-    for (Roi roi : manager.getRoisAsArray()) {
-      this.jListRoisModel.add(idx++, MessageFormat.format("{0} - {1},{2}", idx, (int) roi.getXBase() + (int) (roi.getFloatWidth() / 2), (int) roi.getYBase() + (int) (roi.getFloatHeight() / 2)));
+    final String pattern = "{0} - {1},{2}";
+    int index = 0;
+    for (final Roi roi : manager.getRoisAsArray()) {
+      final int x = (int) roi.getXBase() + (int) (roi.getFloatWidth() / 2);
+      final int y = (int) roi.getYBase() + (int) (roi.getFloatHeight() / 2);
+      this.jListRoisModel.add(index, MessageFormat.format(pattern, index + 1, x, y));
+      index++;
     }
   }
   

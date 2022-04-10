@@ -62,6 +62,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialogEventListener, OnAlignDialogEventListener, OnRemoveDialogEventListener, PropertyChangeListener {
   private static final String IMAGES_SCALED_MESSAGE = "Image size too large: image has been scaled for compatibility.";
@@ -318,25 +319,29 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     this.getMainDialog().jListRois.setSelectedIndex(dialogEvent.getRoiIndex());
   }
   
+  private void deselectAllRois() {
+    Arrays.stream(this.getImage().getManager().getRoisAsArray()).forEach(roi -> roi.setStrokeColor(Color.BLUE));
+  }
+  
   private void handleSelectedRoi(SelectedRoiEvent dialogEvent) {
-    Arrays.stream(this.getImage().getManager().getSelectedRoisAsArray()).forEach(roi -> roi.setStrokeColor(Color.BLUE));
+    this.deselectAllRois();
     this.getImage().getManager().select(dialogEvent.getRoiIndex());
     this.getImage().getRoi().setStrokeColor(Color.yellow);
     this.drawAfterHandlingRois();
   }
   
   private void handleSelectedRois(SelectedRoisEvent dialogEvent) {
+    this.deselectAllRois();
     final int[] rois = dialogEvent.getSelectedIndices();
     final Roi[] roiArrays = this.getImage().getManager().getRoisAsArray();
-    for (int index = 0; index < roiArrays.length; index++) {
-      int finalIndex = index;
-      this.getImage().getManager().select(finalIndex);
-      if (Arrays.stream(rois).anyMatch(roiIndex -> finalIndex == roiIndex)) {
-        this.getImage().getRoi().setStrokeColor(Color.YELLOW);
-      } else {
-        this.getImage().getRoi().setStrokeColor(Color.BLUE);
+    IntStream.range(0, roiArrays.length).forEach(finalIndex -> {
+      final boolean isYellow = Arrays.stream(rois).anyMatch(roiIndex -> finalIndex == roiIndex);
+      final Roi roi = roiArrays[finalIndex];
+      if (isYellow) {
+        this.getImage().getManager().select(finalIndex);
+        roi.setStrokeColor(Color.YELLOW);
       }
-    }
+    });
     this.drawAfterHandlingRois();
   }
   
