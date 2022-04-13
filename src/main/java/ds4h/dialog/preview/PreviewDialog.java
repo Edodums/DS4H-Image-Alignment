@@ -99,8 +99,8 @@ public class PreviewDialog extends ImageWindow {
     over.drawBackgrounds(false);
     over.drawLabels(false);
     over.drawNames(true);
-    over.setLabelColor(Color.BLUE);
-    over.setStrokeColor(Color.BLUE);
+    over.setLabelColor(Color.CYAN);
+    over.setStrokeColor(Color.CYAN);
     int strokeWidth = Math.max((int) (this.currentImage.getWidth() * 0.0025), 3);
     Arrays.stream(this.currentImage.getManager().getRoisAsArray()).forEach(over::add);
     over.setLabelFontSize(Math.round(strokeWidth * 1f), "scale");

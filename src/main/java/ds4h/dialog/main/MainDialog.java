@@ -21,8 +21,11 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.geom.Rectangle2D;
 import java.text.MessageFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static javax.swing.SwingConstants.LEFT;
@@ -186,7 +189,6 @@ public class MainDialog extends ImageWindow {
     this.btnDeleteRoi.addActionListener(e -> {
       final int[] indices = this.jListRois.getSelectedIndices();
       this.eventListener.onMainDialogEvent(new DeleteRoisEvent(indices));
-      this.jListRois.setSelectedIndices(indices);
     });
     this.btnPrevImage.addActionListener(e -> this.eventListener.onMainDialogEvent(new ChangeImageEvent(ChangeImageEvent.ChangeDirection.PREV)));
     this.btnNextImage.addActionListener(e -> this.eventListener.onMainDialogEvent(new ChangeImageEvent(ChangeImageEvent.ChangeDirection.NEXT)));
@@ -220,6 +222,14 @@ public class MainDialog extends ImageWindow {
       public void mouseExited(MouseEvent e) {
         mouseOverCanvas = false;
         super.mouseExited(e);
+      }
+      
+      @Override
+      public void mouseReleased(MouseEvent e) {
+        if (!mouseOverCanvas) {
+          handleOutOfBoundsRois();
+        }
+        super.mouseReleased(e);
       }
     });
     // Rois list handling
@@ -264,31 +274,53 @@ public class MainDialog extends ImageWindow {
     this.pack();
   }
   
+  private void handleOutOfBoundsRois() {
+    final Roi[] roisAsArray = this.image.getManager().getRoisAsArray();
+    final List<Integer> roisToDelete = new ArrayList<>();
+    for (int index = 0; index < this.image.getManager().getRoisAsArray().length; index++) {
+      final Roi roi = roisAsArray[index];
+      Rectangle2D.Double bounds = roi.getFloatBounds();
+      if (bounds.getX() < image.getWidth() && bounds.getY() < image.getHeight()) {
+        continue;
+      }
+      roisToDelete.add(index);
+    }
+    if (roisToDelete.size() > 0) {
+      String indexesJoinedMessage = roisToDelete.stream().map(value -> String.valueOf(value + 1)).collect(Collectors.joining(", "));
+      String message = String.format("Rois %s are going to be deleted", indexesJoinedMessage);
+      int answer = JOptionPane.showOptionDialog(null, message, "Warning", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE, null, new String[]{"OK"}, new String[]{"OK"});
+      if (answer == 0) {
+        int[] indices = roisToDelete.stream().mapToInt(value -> value).toArray();
+        this.eventListener.onMainDialogEvent(new DeleteRoisEvent(indices));
+      }
+    }
+  }
+  
   private void listenerROI() {
     Roi.addRoiListener((imagePlus, event) -> {
       if (event != RoiListener.MOVED) {
         return;
       }
-      final int[] indices = jListRois.getSelectedIndices();
+      final int[] indices = this.jListRois.getSelectedIndices();
       // IF MORE THAN ONE IS SELECTED IN JLIST THEN APPLY TRANSLATION TO ALL AT ONCE
       if (indices.length > 1) {
         // FIND THE ROI THAT HAS BEEN CLICKED DIRECTLY
         final Roi selectedRoi = imagePlus.getRoi();
         final Rectangle2D.Double bounds = selectedRoi.getFloatBounds();
-        Roi[] roisAsArray = image.getManager().getRoisAsArray();
+        Roi[] roisAsArray = this.image.getManager().getRoisAsArray();
         if (isNotTheSameRoi(selectedRoi)) {
-          lastBound = null;
+          this.lastBound = null;
         }
-        if (lastBound == null) {
-          lastBound = (Rectangle2D.Double) bounds.clone();
+        if (this.lastBound == null) {
+          this.lastBound = (Rectangle2D.Double) bounds.clone();
         }
-        final double translationX = bounds.getX() - lastBound.getX();
-        final double translationY = bounds.getY() - lastBound.getY();
+        final double translationX = bounds.getX() - this.lastBound.getX();
+        final double translationY = bounds.getY() - this.lastBound.getY();
         if (isNotTheSameBounds(bounds)) {
-          lastBound = (Rectangle2D.Double) bounds.clone();
-          handleMultipleRoisTranslation(translationX, translationY, roisAsArray, indices);
+          this.lastBound = (Rectangle2D.Double) bounds.clone();
+          this.handleMultipleRoisTranslation(translationX, translationY, roisAsArray, indices);
         }
-        lastRoi = selectedRoi;
+        this.lastRoi = selectedRoi;
       }
     });
   }
@@ -368,9 +400,9 @@ public class MainDialog extends ImageWindow {
     over.drawLabels(false);
     over.drawNames(true);
     over.setLabelFontSize(Math.round(strokeWidth * 1f), SCALE_OPTION);
-    over.setLabelColor(Color.BLUE);
+    over.setLabelColor(Color.CYAN);
     over.setStrokeWidth((double) strokeWidth);
-    over.setStrokeColor(Color.BLUE);
+    over.setStrokeColor(Color.CYAN);
     Arrays.stream(this.image.getManager().getRoisAsArray()).forEach(over::add);
     this.renameRois();
     this.image.getManager().setOverlay(over);
