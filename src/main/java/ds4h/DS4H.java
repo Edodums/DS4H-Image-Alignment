@@ -10,23 +10,36 @@
 package ds4h;
 
 import ds4h.image.registration.ImageAlignment;
+import ij.IJ;
 import ij.plugin.PlugIn;
-import org.scijava.command.Command;
-import org.scijava.plugin.Plugin;
 
-@Plugin(type = Command.class)
-public class DS4H implements PlugIn, Command {
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+public class DS4H implements PlugIn {
+  private static void deleteTempFilesOnExit(ImageAlignment imageAlignment) {
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      imageAlignment.getTempImages().forEach(tempImage -> {
+        try {
+          Files.deleteIfExists(Paths.get(tempImage));
+        } catch (IOException e) {
+          IJ.showMessage(e.getMessage());
+        }
+      });
+    }));
+  }
+  
   @Override
   public void run(String s) {
-    new ImageAlignment().run("");
+    ImageAlignment imageAlignment = new ImageAlignment();
+    imageAlignment.run();
+    deleteTempFilesOnExit(imageAlignment);
   }
   
-  @Override
-  public void run() {
-    this.run("");
-  }
-  
-  public static void main(final String... args) {
-    new ImageAlignment().run("");
+  public static void main(String[] args) {
+    ImageAlignment imageAlignment = new ImageAlignment();
+    imageAlignment.run();
+    DS4H.deleteTempFilesOnExit(imageAlignment);
   }
 }

@@ -3,6 +3,7 @@ package ds4h.dialog.remove;
 import ds4h.image.model.ImageFile;
 import ds4h.dialog.remove.event.ExitEvent;
 import ds4h.dialog.remove.event.RemoveImageEvent;
+import ij.IJ;
 
 import javax.swing.*;
 import javax.swing.border.Border;
@@ -51,7 +52,7 @@ public class RemoveImageDialog extends JDialog {
         try {
             model.remove(index);
         } catch (Exception e) {
-            e.printStackTrace();
+            IJ.showMessage(e.getMessage());
         }
         lst_images.updateUI();
         this.update(this.getGraphics());

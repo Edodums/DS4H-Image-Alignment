@@ -66,7 +66,7 @@ public class FileService {
       try {
         return getFilesInJarFromDirectory(directoryPath);
       } catch (IOException e) {
-        e.printStackTrace();
+        IJ.showMessage(e.getMessage());
       }
     }
     return Arrays.stream(Objects.requireNonNull(new File(directoryPath).listFiles()))

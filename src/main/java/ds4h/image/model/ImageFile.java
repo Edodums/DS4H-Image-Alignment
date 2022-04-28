@@ -36,7 +36,7 @@ public class ImageFile {
     this.generateImageReader();
   }
   
-  public static long estimateMemoryUsage(String pathFile) throws IOException, FormatException {
+  public static long estimateMemoryUsage(String pathFile) throws IOException {
     return getImageImportingProcess(pathFile).getMemoryUsage();
   }
   
@@ -51,7 +51,7 @@ public class ImageFile {
     try {
       process.execute();
     } catch (Exception e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
     return process;
   }
@@ -77,6 +77,7 @@ public class ImageFile {
    * Yeah, getNImages is get numbers of images,
    * because calling it getImagesCounter was too much
    * of a work and no, I don't want to change
+   *
    * @return counter
    */
   public int getNImages() {
@@ -91,7 +92,7 @@ public class ImageFile {
       try {
         getWholeSlideImage();
       } catch (Exception e) {
-        e.printStackTrace();
+        IJ.showMessage(e.getMessage());
       }
     }
     return new BufferedImage("", bufferedEditorImageReaderWholeSlide.openImage(index), roiManagers.get(index), this.editorImageDimension);
@@ -154,7 +155,7 @@ public class ImageFile {
         }
       }
     } catch (FormatException | IOException e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
     return cached_thumbs;
   }

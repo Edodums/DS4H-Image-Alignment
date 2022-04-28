@@ -114,7 +114,7 @@ public class LeastSquareTransformationBuilder extends AbstractBuilder {
         this.getAlignDialog().pack();
         this.getAlignDialog().setVisible(true);
       } catch (Exception e) {
-        e.printStackTrace();
+        IJ.showMessage(e.getMessage());
       }
       this.getLoadingDialog().hideDialog();
     } else {

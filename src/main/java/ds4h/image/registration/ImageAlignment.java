@@ -34,6 +34,7 @@ import ds4h.image.manager.ImagesManager;
 import ds4h.image.model.ImageFile;
 import ds4h.services.FileService;
 import ds4h.services.library.LoaderStrategy;
+import ds4h.utils.Pair;
 import ds4h.utils.Utilities;
 import ij.IJ;
 import ij.Prefs;
@@ -46,7 +47,6 @@ import ij.io.OpenDialog;
 import ij.io.SaveDialog;
 import ij.plugin.frame.RoiManager;
 import loci.common.enumeration.EnumException;
-import loci.formats.FormatException;
 import loci.formats.UnknownFormatException;
 
 import javax.swing.*;
@@ -54,9 +54,11 @@ import java.awt.*;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.MathContext;
 import java.text.MessageFormat;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -67,7 +69,6 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   private static final String ALIGNED_IMAGE_NOT_SAVED_MESSAGE = "Aligned images not saved: are you sure you want to exit without saving?";
   private static final String DELETE_ALL_IMAGES = "Do you confirm to delete all the images of the stack?";
   private static final String IMAGE_SAVED_MESSAGE = "Image successfully saved";
-  private static final String ROI_NOT_ADDED_MESSAGE = "One or more corner points not added: they exceed the image bounds";
   private static final String INSUFFICIENT_MEMORY_MESSAGE = "Insufficient computer memory (RAM) available. \n\n\t Try to increase the allocated memory by going to \n\n\t                Edit  ▶ Options  ▶ Memory & Threads \n\n\t Change \"Maximum Memory\" to, at most, 1000 MB less than your computer's total RAM.";
   private static final String INSUFFICIENT_MEMORY_TITLE = "Error: insufficient memory";
   private static final String UNKNOWN_FORMAT_MESSAGE = "Error: trying to open a file with a unsupported format.";
@@ -76,6 +77,8 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   private static final String CAREFUL_NOW_TITLE = "Careful now";
   private static final String TIFF_EXT = ".tiff";
   private static final String NULL_PATH = "nullnull";
+  private static final String TOO_FEW_CORNER_POINTS = "Remember that if you want to align via corners, you should have the same numbers of Corners for each image, and they should be at least 3";
+  private static final String DELETE_COMMAND = "Delete";
   
   static {
     ImageAlignment.loadLibrary();
@@ -96,12 +99,8 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   
   private static void loadLibrary() {
     LoaderStrategy strategy = new LoaderStrategy();
-    try {
-      strategy.load();
-      strategy.loadExtra();
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
+    strategy.load();
+    strategy.loadExtra();
   }
   
   @Override
@@ -196,7 +195,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
         }
       }
       if (dialogEvent instanceof ExitEvent) {
-        disposeAll();
+        this.disposeAll();
         System.exit(0);
       }
     }
@@ -214,6 +213,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     List<Integer> imageIndexes;
     // remove the index of the current image, if present.
     List<Integer> list = new ArrayList<>();
+    Roi[] roisOfCurrentImage = this.getImage().getManager().getRoisAsArray();
     for (RoiManager roiManager : this.getManager().getRoiManagers()) {
       if (roiManager.getRoisAsArray().length == 0) {
         continue;
@@ -234,35 +234,72 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
       double ratioOfChosenImage = this.getImageRatio(chosenImage);
       double ratioOfCurrentImage = this.getImageRatio(this.getImage());
       RoiManager selectedManager = this.getManager().getRoiManagers().get(imageIndexes.get(optionList.getSelectedIndex()));
-      Map<Integer, Point> roiPoints = new HashMap<>();
-      Roi[] rois = selectedManager.getRoisAsArray();
-      for (int index = 0; index < rois.length; index++) {
-        final Roi roi = rois[index];
-        Point point = this.convertPointRatio(new Point((int) roi.getRotationCenter().xpoints[0], (int) roi.getRotationCenter().ypoints[0]), ratioOfChosenImage, ratioOfCurrentImage);
-        if (point.x < this.getImage().getWidth() && point.y < this.getImage().getHeight()) {
-          this.onMainDialogEvent(new AddRoiEvent(point));
-          continue;
-        }
-        roiPoints.put(index, point);
-      }
+      Map<Integer, Pair<BigDecimal, BigDecimal>> roiPoints = this.handleRoiInNewImage(roisOfCurrentImage, ratioOfChosenImage, ratioOfCurrentImage, selectedManager);
       // I'll definitely have to refactor all this duplicated code hanging around
       if (!roiPoints.isEmpty()) {
-        String[] buttons = {"Yes", "No"};
-        String message = "The corner points that were out of bounds were deleted, do you want to delete the same points in the referenced image?";
-        int answer = JOptionPane.showOptionDialog(null, message, CAREFUL_NOW_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, buttons, buttons[1]);
-        if (answer == 0) {
-          int[] roisIndices = roiPoints.keySet().stream().mapToInt(value -> value).toArray();
-          // Keep in mind that when you want to delete multiple rois, it should be done from in reverse order
-          IntStream.range(0, roisIndices.length).map(i -> roisIndices[roisIndices.length - 1 - i]).forEachOrdered(index -> {
-            chosenImage.getManager().select(index);
-            if (chosenImage.getManager().isSelected(index)) {
-              chosenImage.getManager().runCommand("Delete");
-            }
-            this.refreshRoiGUI();
-          });
-        }
+        this.handleRoiPointsThatWereNotAdded(chosenImage, roiPoints);
       }
+      this.refreshRoiGUI();
       this.getImage().setCopyCornersMode();
+    }
+  }
+  
+  private Map<Integer, Pair<BigDecimal, BigDecimal>> handleRoiInNewImage(Roi[] roisOfCurrentImage, double ratioOfChosenImage, double ratioOfCurrentImage, RoiManager selectedManager) {
+    Map<Integer, Pair<BigDecimal, BigDecimal>> roiPoints = new HashMap<>();
+    Roi[] rois = selectedManager.getRoisAsArray();
+    for (int index = 0; index < rois.length; index++) {
+      final Roi roi = rois[index];
+      final BigDecimal x = BigDecimal.valueOf(roi.getRotationCenter().xpoints[0]);
+      final BigDecimal y = BigDecimal.valueOf(roi.getRotationCenter().ypoints[0]);
+      Pair<BigDecimal, BigDecimal> point = this.convertPointRatio(new Pair<>(x, y), ratioOfChosenImage, ratioOfCurrentImage);
+      if (this.isAlreadyThere(point, roisOfCurrentImage)) {
+        continue;
+      }
+      if (point.getX().intValue() < this.getImage().getWidth() && point.getY().intValue() < this.getImage().getHeight()) {
+        this.onMainDialogEvent(new AddRoiEvent(point));
+        continue;
+      }
+      roiPoints.put(index, point);
+    }
+    return roiPoints;
+  }
+  
+  private void handleRoiPointsThatWereNotAdded(BufferedImage chosenImage, Map<Integer, Pair<BigDecimal, BigDecimal>> roiPoints) {
+    String[] buttons = {"Yes", "No"};
+    String message = "The corners out of bounds are deleted. Do you want to delete the same corners in the referenced image?";
+    int answer = JOptionPane.showOptionDialog(null, message, CAREFUL_NOW_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, buttons, buttons[1]);
+    if (answer == 0) {
+      int[] roisIndices = roiPoints.keySet().stream().mapToInt(value -> value).toArray();
+      // Keep in mind that when you want to delete multiple rois, it should be done from in reverse order
+      IntStream.range(0, roisIndices.length).map(i -> roisIndices[roisIndices.length - 1 - i]).forEachOrdered(index -> {
+        chosenImage.getManager().select(index);
+        if (chosenImage.getManager().isSelected(index)) {
+          chosenImage.getManager().runCommand(DELETE_COMMAND);
+        }
+      });
+    }
+    this.warnUserIfNumberOfCornersIsNotTheSame(chosenImage, image);
+  }
+  
+  private boolean isAlreadyThere(Pair<BigDecimal, BigDecimal> point, Roi[] roisOfCurrentImage) {
+    boolean isThere = false;
+    for (Roi roi : roisOfCurrentImage) {
+      final BigDecimal x = BigDecimal.valueOf(roi.getRotationCenter().xpoints[0]).round(new MathContext(5));
+      final BigDecimal y = BigDecimal.valueOf(roi.getRotationCenter().ypoints[0]).round(new MathContext(5));
+      final Pair<BigDecimal, BigDecimal> rotationCenterPoint = new Pair<>(x, y);
+      if (point.getX().equals(rotationCenterPoint.getX()) && point.getY().equals(rotationCenterPoint.getY())) {
+        isThere = true;
+        break;
+      }
+    }
+    return isThere;
+  }
+  
+  private void warnUserIfNumberOfCornersIsNotTheSame(BufferedImage chosenImage, BufferedImage image) {
+    int lengthCornersChosenImage = chosenImage.getManager().getRoisAsArray().length;
+    int lengthCornersCurrentImage = image.getManager().getRoisAsArray().length;
+    if (lengthCornersChosenImage != lengthCornersCurrentImage) {
+      JOptionPane.showMessageDialog(null, TOO_FEW_CORNER_POINTS, "Warning", JOptionPane.WARNING_MESSAGE);
     }
   }
   
@@ -270,12 +307,10 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     return (double) image.getWidth() / (double) image.getHeight();
   }
   
-  private Point convertPointRatio(Point point, double previousRatio, double currentRatio) {
-    Point convertedPoint = new Point();
-    double x = (point.getX() * currentRatio) / previousRatio;
-    double y = (point.getY() * currentRatio) / previousRatio;
-    convertedPoint.setLocation(x, y);
-    return convertedPoint;
+  private Pair<BigDecimal, BigDecimal> convertPointRatio(Pair<BigDecimal, BigDecimal> point, double previousRatio, double currentRatio) {
+    BigDecimal x = point.getX().multiply(BigDecimal.valueOf(currentRatio)).divide(BigDecimal.valueOf(previousRatio), new MathContext(5));
+    BigDecimal y = point.getY().multiply(BigDecimal.valueOf(currentRatio)).divide(BigDecimal.valueOf(previousRatio), new MathContext(5));
+    return new Pair<>(x, y);
   }
   
   private void addFile(AddFileEvent dialogEvent) {
@@ -292,7 +327,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
       this.getLoadingDialog().hideDialog();
       JOptionPane.showMessageDialog(null, UNKNOWN_FORMAT_MESSAGE, UNKNOWN_FORMAT_TITLE, JOptionPane.ERROR_MESSAGE);
     } catch (Exception e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
     this.getMainDialog().setPrevImageButtonEnabled(this.getManager().hasPrevious());
     this.getMainDialog().setNextImageButtonEnabled(this.getManager().hasNext());
@@ -305,13 +340,14 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
    * TODO: refactor codebase when you have time
    **/
   private void autoAlign(AutoAlignEvent event) {
-    AbstractBuilder builder = new FREAKBuilder(this.getLoadingDialog(), this, this.getManager(), event);
+    AbstractBuilder builder = new FREAKBuilder(this.getLoadingDialog(), this.getManager(), event, this);
     builder.getLoadingDialog().showDialog();
     Utilities.setTimeout(() -> {
       try {
         this.alignHandler(builder);
       } catch (Exception e) {
         e.printStackTrace();
+        IJ.showMessage(e.getMessage());
       }
       builder.getLoadingDialog().hideDialog();
     }, 10);
@@ -328,7 +364,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
           builder.build();
         }
       } catch (Exception e) {
-        e.printStackTrace();
+        IJ.showMessage(e.getMessage());
       }
       builder.getLoadingDialog().hideDialog();
     }, 10);
@@ -390,7 +426,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     Prefs.useNamesAsLabels = true;
     Prefs.noPointLabels = false;
     final int roiSize = (int) (Math.max(Toolkit.getDefaultToolkit().getScreenSize().width, this.getImage().getWidth()) * 0.03);
-    final OvalRoi outer = new OvalRoi(dialogEvent.getClickCoordinates().x - (roiSize / 2), dialogEvent.getClickCoordinates().y - (roiSize / 2), roiSize, roiSize);
+    final OvalRoi outer = new OvalRoi(dialogEvent.getClickCoordinates().getX().doubleValue() - ((double) roiSize / 2), dialogEvent.getClickCoordinates().getY().doubleValue() - ((double) roiSize / 2), roiSize, roiSize);
     // get roughly the 0,25% of the width of the image as stroke width of th rois added.
     // If the resultant value is too small, set it as the minimum value
     final int strokeWidth = Math.max((int) (this.getImage().getWidth() * 0.0025), 3);
@@ -414,7 +450,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   
   private void deleteRoi(DeleteRoiEvent dialogEvent) {
     this.getImage().getManager().select(dialogEvent.getRoiIndex());
-    this.getImage().getManager().runCommand("Delete");
+    this.getImage().getManager().runCommand(DELETE_COMMAND);
     this.refreshRoiGUI();
   }
   
@@ -422,7 +458,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     int[] rois = dialogEvent.getRois();
     IntStream.range(0, rois.length).map(i -> rois[rois.length - 1 - i]).forEachOrdered(roi -> {
       this.getImage().getManager().select(roi);
-      this.getImage().getManager().runCommand("Delete");
+      this.getImage().getManager().runCommand(DELETE_COMMAND);
       this.refreshRoiGUI();
     });
   }
@@ -457,12 +493,11 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
         this.getPreviewDialog().close();
         return;
       }
-      
       try {
         this.getLoadingDialog().showDialog();
         this.previewDialog = new PreviewDialog(this.getManager().get(this.getManager().getCurrentIndex()), this, this.getManager().getCurrentIndex(), this.getManager().getNImages(), "Preview Image " + (this.getManager().getCurrentIndex() + 1) + "/" + this.getManager().getNImages());
       } catch (Exception e) {
-        e.printStackTrace();
+        IJ.showMessage(e.getMessage());
       }
       this.getLoadingDialog().hideDialog();
       this.getPreviewDialog().pack();
@@ -529,7 +564,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     }
     if (removeEvent instanceof ds4h.dialog.remove.event.RemoveImageEvent) {
       int imageFileIndex = ((ds4h.dialog.remove.event.RemoveImageEvent) removeEvent).getImageFileIndex();
-      // only a image is available: if user remove this image we need to ask him to choose another one!
+      // only an image is available: if user remove this image we need to ask him to choose another one!
       if (this.manager.getImageFiles().size() == 1) {
         String[] buttons = {"Yes", "No"};
         int answer = JOptionPane.showOptionDialog(null, DELETE_ALL_IMAGES, CAREFUL_NOW_TITLE, JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, buttons, buttons[1]);
@@ -537,7 +572,6 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
           String pathFile = this.promptForFile();
           if (pathFile.equals(NULL_PATH)) {
             this.disposeAll();
-            System.exit(0);
             return;
           }
           this.disposeAll();
@@ -567,7 +601,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
       this.getPreviewDialog().drawRois();
     }
     // Get the number of rois added in each this.getImage(). If they are all the same (and at least one is added), we can enable the "align" functionality
-    List<Integer> roisNumber = manager.getRoiManagers().stream().map(roiManager -> roiManager.getRoisAsArray().length).collect(Collectors.toList());
+    List<Integer> roisNumber = this.getManager().getRoiManagers().stream().map(roiManager -> roiManager.getRoisAsArray().length).collect(Collectors.toList());
     boolean alignButtonEnabled = roisNumber.get(0) >= LeastSquareImageTransformation.MINIMUM_ROI_NUMBER && this.getManager().getNImages() > 1 && roisNumber.stream().distinct().count() == 1;
     // check if: the number of images is more than 1, ALL the images has the same number of rois added and the ROI numbers are more than 3
     this.getMainDialog().setAlignButtonEnabled(alignButtonEnabled);
@@ -614,23 +648,18 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     } catch (UnknownFormatException | EnumException e) {
       JOptionPane.showMessageDialog(null, UNKNOWN_FORMAT_MESSAGE, UNKNOWN_FORMAT_TITLE, JOptionPane.ERROR_MESSAGE);
     } catch (Exception e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     } finally {
       this.getLoadingDialog().hideDialog();
     }
   }
   
-  private void showIfMemoryIsInsufficient(String pathFile) throws IOException, FormatException {
-    try {
-      long memory = ImageFile.estimateMemoryUsage(pathFile);
-      this.totalMemory += memory;
-      if (this.getTotalMemory() >= Runtime.getRuntime().maxMemory()) {
-        JOptionPane.showMessageDialog(null, INSUFFICIENT_MEMORY_MESSAGE, INSUFFICIENT_MEMORY_TITLE, JOptionPane.ERROR_MESSAGE);
-        this.run();
-      }
-    } catch (UnknownFormatException e) {
-      this.getLoadingDialog().hideDialog();
-      JOptionPane.showMessageDialog(null, UNKNOWN_FORMAT_MESSAGE, UNKNOWN_FORMAT_TITLE, JOptionPane.ERROR_MESSAGE);
+  private void showIfMemoryIsInsufficient(String pathFile) throws IOException {
+    long memory = ImageFile.estimateMemoryUsage(pathFile);
+    this.totalMemory += memory;
+    if (this.getTotalMemory() >= Runtime.getRuntime().maxMemory()) {
+      JOptionPane.showMessageDialog(null, INSUFFICIENT_MEMORY_MESSAGE, INSUFFICIENT_MEMORY_TITLE, JOptionPane.ERROR_MESSAGE);
+      this.run();
     }
   }
   
@@ -657,24 +686,9 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   
   
   public void run() {
-    try {
-      List<String> filePaths = FileService.promptForFiles();
-      filePaths.removeIf(filePath -> filePath.equals(NULL_PATH));
-      this.initialize(filePaths);
-      // THIS PIECE OF CODE CAN'T WORK LIKE THIS ( THE TEMP FILES ARE USED AFTER THE ALIGNMENT )
-      // FIND A WAY TO AVOID THIS ( like clearing the usages of images, maybe setImage(null)  )
-      /*Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-        this.getTempImages().forEach(tempImage -> {
-          try {
-            Files.deleteIfExists(Paths.get(tempImage));
-          } catch (IOException e) {
-            e.printStackTrace();
-          }
-        });
-      }));*/
-    } catch (Exception e) {
-      IJ.showMessage(e.getMessage());
-    }
+    List<String> filePaths = new ArrayList<>(FileService.promptForFiles());
+    filePaths.removeIf(filePath -> filePath.equals(NULL_PATH));
+    this.initialize(filePaths);
   }
   
   private ImagesManager getManager() {
@@ -713,7 +727,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
     return this.totalMemory;
   }
   
-  private List<String> getTempImages() {
+  public List<String> getTempImages() {
     return this.tempImages;
   }
   

@@ -1,6 +1,7 @@
 package ds4h.dialog.about;
 
 import ds4h.utils.Utilities;
+import ij.IJ;
 
 import javax.swing.*;
 import java.awt.*;
@@ -68,7 +69,7 @@ public class AboutDialog extends JDialog {
       byte[] bytes = Utilities.inputStreamToByteArray(getClass().getResourceAsStream("/info.png"));
       imageIcon = new ImageIcon(bytes);
     } catch (IOException e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
     assert imageIcon != null;
     Image image = imageIcon.getImage(); // transform it
@@ -277,7 +278,7 @@ public class AboutDialog extends JDialog {
         try {
           Desktop.getDesktop().mail(new URI(mailTo));
         } catch (Exception ex) {
-          ex.printStackTrace();
+          IJ.showMessage(ex.getMessage());
         }
       }
     };

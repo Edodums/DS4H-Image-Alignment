@@ -4,6 +4,7 @@ import ds4h.dialog.main.event.*;
 import ds4h.image.buffered.BufferedImage;
 import ds4h.image.buffered.event.RoiSelectedEvent;
 import ds4h.services.FileService;
+import ds4h.utils.Pair;
 import ij.IJ;
 import ij.Prefs;
 import ij.gui.ImageWindow;
@@ -20,6 +21,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.geom.Rectangle2D;
+import java.math.BigDecimal;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -226,9 +228,7 @@ public class MainDialog extends ImageWindow {
       
       @Override
       public void mouseReleased(MouseEvent e) {
-        if (!mouseOverCanvas) {
-          handleOutOfBoundsRois();
-        }
+        handleOutOfBoundsRois();
         super.mouseReleased(e);
       }
     });
@@ -287,7 +287,7 @@ public class MainDialog extends ImageWindow {
     }
     if (roisToDelete.size() > 0) {
       String indexesJoinedMessage = roisToDelete.stream().map(value -> String.valueOf(value + 1)).collect(Collectors.joining(", "));
-      String message = String.format("Rois %s are going to be deleted", indexesJoinedMessage);
+      String message = roisToDelete.size() == 1 ? String.format("Corner %s is going to be deleted", indexesJoinedMessage) : String.format("Corners %s are going to be deleted", indexesJoinedMessage);
       int answer = JOptionPane.showOptionDialog(null, message, "Warning", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE, null, new String[]{"OK"}, new String[]{"OK"});
       if (answer == 0) {
         int[] indices = roisToDelete.stream().mapToInt(value -> value).toArray();
@@ -459,7 +459,8 @@ public class MainDialog extends ImageWindow {
     public boolean dispatchKeyEvent(KeyEvent e) {
       boolean isReleased = e.getID() == KeyEvent.KEY_RELEASED;
       if (isReleased && e.getKeyCode() == KeyEvent.VK_C && mouseOverCanvas) {
-        Point clickCoordinates = getCanvas().getCursorLoc();
+        Point point = getCanvas().getCursorLoc();
+        Pair<BigDecimal, BigDecimal> clickCoordinates = new Pair<>(BigDecimal.valueOf(point.getX()), BigDecimal.valueOf(point.getY()));
         eventListener.onMainDialogEvent(new AddRoiEvent(clickCoordinates));
       }
       if (!debounce) {
@@ -478,7 +479,7 @@ public class MainDialog extends ImageWindow {
               e.consume();
             }
           } catch (Exception e1) {
-            e1.printStackTrace();
+            IJ.showMessage(e1.getMessage());
           }
         }).start();
       }

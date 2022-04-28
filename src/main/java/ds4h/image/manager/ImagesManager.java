@@ -4,6 +4,7 @@ import ds4h.image.buffered.BufferedImage;
 import ds4h.image.model.ImageFile;
 import ds4h.observer.Observable;
 import ds4h.services.FileService;
+import ij.IJ;
 import ij.ImageListener;
 import ij.ImagePlus;
 import ij.io.FileSaver;
@@ -95,7 +96,7 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
       this.addFile(path, indexToRemove);
       this.firePropertyChange("updatedImage", file.getPathFile(), path);
     } catch (IOException | FormatException e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
   }
   
@@ -148,7 +149,7 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
         return image;
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
     return null;
   }
@@ -220,7 +221,7 @@ public class ImagesManager implements ListIterator<ImagePlus>, Observable {
       try {
         imageFile.dispose();
       } catch (IOException e) {
-        e.printStackTrace();
+        IJ.showMessage(e.getMessage());
       }
     });
   }

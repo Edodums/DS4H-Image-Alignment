@@ -1,6 +1,7 @@
 package ds4h.dialog.loading;
 
 import ds4h.utils.Utilities;
+import ij.IJ;
 
 import javax.swing.*;
 import java.awt.*;
@@ -14,7 +15,7 @@ public class LoadingDialog extends JDialog {
       byte[] bytes = Utilities.inputStreamToByteArray(getClass().getResourceAsStream("/spinner.gif"));
       loading = new ImageIcon(bytes);
     } catch (IOException e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
     this.setLayout(new BorderLayout(0, 10));
     this.add(new JLabel("", loading, JLabel.CENTER), BorderLayout.CENTER);

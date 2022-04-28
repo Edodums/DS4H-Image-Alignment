@@ -1,5 +1,7 @@
 package ds4h.utils;
 
+import ij.IJ;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,7 +17,7 @@ public class Utilities {
                 runnable.run();
             }
             catch (Exception e){
-                e.printStackTrace();
+                IJ.showMessage(e.getMessage());
             }
         }).start();
     }

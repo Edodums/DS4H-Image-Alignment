@@ -53,7 +53,7 @@ public class FREAKBuilder extends AbstractBuilder {
   private final List<Mat> images = new ArrayList<>();
   private final Map<Long, String> pathMap = new HashMap<>();
   
-  public FREAKBuilder(LoadingDialog loadingDialog, OnAlignDialogEventListener listener, ImagesManager manager, AutoAlignEvent event) {
+  public FREAKBuilder(LoadingDialog loadingDialog, ImagesManager manager, AutoAlignEvent event, OnAlignDialogEventListener listener) {
     super(loadingDialog, listener, manager, event);
   }
   
@@ -129,7 +129,7 @@ public class FREAKBuilder extends AbstractBuilder {
       this.getAlignDialog().pack();
       this.getAlignDialog().setVisible(true);
     } catch (Exception e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
     this.getLoadingDialog().hideDialog();
   }
@@ -195,7 +195,7 @@ public class FREAKBuilder extends AbstractBuilder {
         this.pathMap.put(matImage.dataAddr(), imageFile.getPathFile());
         this.images.add(matImage);
       } catch (Exception e) {
-        e.printStackTrace();
+        IJ.showMessage(e.getMessage());
       }
     }
   }

@@ -9,16 +9,16 @@
 
 package ds4h.services.library;
 
-import com.google.api.client.util.IOUtils;
 import ij.IJ;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static ds4h.services.library.OpenCVUtility.getExt;
 
@@ -26,32 +26,34 @@ public class LoaderStrategy implements LibraryLoader {
   private ResourceLoader loader;
   
   @Override
-  public void load() throws IOException {
+  public void load() {
     if (LibraryLoader.getOS().startsWith("Windows")) {
-        this.loader = new WindowsDllLoader();
+      this.loader = new WindowsDllLoader();
     }
-    InputStream in = this.loader.loadInputAsStream();
-    this.handleLoad(in);
-  }
-  
-  private void handleLoad(InputStream in) throws IOException {
-    File fileOut = File.createTempFile("lib", getExt());
-    OutputStream out = FileUtils.openOutputStream(fileOut);
-    if (in != null) {
-      IOUtils.copy(in, out);
-      in.close();
-      out.close();
-      System.load(fileOut.toString());
-    } else {
-      System.out.println("Couldn't find the right library\n the Developer didn't set the right name");
+    try {
+      InputStream in = this.loader.loadInputAsStream();
+      this.handleLoad(in);
+    } catch (Exception e) {
+      IJ.showMessage(e.getMessage());
     }
   }
   
-  public void loadExtra() throws IOException {
-    List<InputStream> libraries = new ArrayList<>(this.loader.loadExtra());
-    for (int index = 0, librariesSize = libraries.size(); index < librariesSize; index++) {
-      InputStream library = libraries.get(index);
-      this.handleLoad(library);
+  private void handleLoad(InputStream in) {
+    try {
+      File fileOut = File.createTempFile("lib", getExt());
+      OutputStream out = FileUtils.openOutputStream(fileOut);
+      if (in != null) {
+        IOUtils.copy(in, out);
+        in.close();
+        out.close();
+        System.load(fileOut.toString());
+      }
+    } catch (Exception e) {
+      IJ.showMessage(e.getMessage());
     }
+  }
+  
+  public void loadExtra() {
+    this.loader.loadExtra().forEach(this::handleLoad);
   }
 }

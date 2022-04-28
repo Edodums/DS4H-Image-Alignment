@@ -1,7 +1,6 @@
 package ds4h.image.registration;
 
 import ds4h.dialog.align.setting.SettingEvent;
-import ds4h.dialog.main.event.AlignEvent;
 import ds4h.image.buffered.BufferedImage;
 import ij.IJ;
 import ij.ImagePlus;
@@ -32,7 +31,7 @@ public class LeastSquareImageTransformation {
       Class<? extends Model<?>> modelClass = LeastSquareImageTransformation.getTransformationModel(event);
       t.setModel(modelClass);
     } catch (Exception e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
     }
     t.setAlpha(1.0f);
     int meshResolution = 32;
@@ -61,7 +60,7 @@ public class LeastSquareImageTransformation {
       t.setMatches(matches);
       mapping = new TransformMeshMapping<>(new CoordinateTransformMesh(t, meshResolution, source.getWidth(), source.getHeight()));
     } catch (final Exception e) {
-      e.printStackTrace();
+      IJ.showMessage(e.getMessage());
       IJ.showMessage("Not enough landmarks selected to find a transformation model.");
       return null;
     }
