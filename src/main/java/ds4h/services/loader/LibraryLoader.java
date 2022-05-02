@@ -7,7 +7,7 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-package ds4h.services.library;
+package ds4h.services.loader;
 
 import java.io.IOException;
 
@@ -22,19 +22,12 @@ public interface LibraryLoader {
   }
   
   /**
-   * Loads the main library
+   * Loads library/ies
    *
-   * @throws IOException if it can't found the lib
+   * @throws IOException if it can't found the lib/s
    */
   void load() throws IOException;
-  
-  /**
-   * Loads extra libraries, in the case of opencv it loads the extra features ( FREAK, and other non-free algorithms )
-   *
-   * @throws IOException if it can't found the lib
-   */
-  void loadExtra() throws IOException;
-  
+
   /**
    * It's unused for the time being, but it could be helpful in the future
    *

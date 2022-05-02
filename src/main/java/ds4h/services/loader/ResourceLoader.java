@@ -7,23 +7,21 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-package ds4h.services.library;
+package ds4h.services.loader;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 
 public interface ResourceLoader {
   /**
    *
-   * @return
-   * @throws IOException
+   * @return all the InputStream generated after the lookup of the resources
    */
-  InputStream loadInputAsStream() throws IOException;
-  
+  List<InputStream> getInputStreams();
+
   /**
    *
-   * @return
+   * @return extension based on platform
    */
-  List<InputStream> loadExtra();
+  String getExt();
 }

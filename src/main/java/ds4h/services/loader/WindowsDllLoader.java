@@ -7,29 +7,29 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-package ds4h.services.library;
+package ds4h.services.loader;
 
 import ds4h.image.registration.ImageAlignment;
 import java.io.InputStream;
 import java.util.List;
 
-import static ds4h.services.library.OpenCVUtility.*;
 import static java.util.stream.Collectors.toList;
 
 public class WindowsDllLoader implements ResourceLoader, OpenCVUtility {
-  private static final String OPENCV_PATH = "opencv_java";
-  
+  private static final String PREFIX = "opencv_";
+  private static final String EXT = ".dylib";
+
   @Override
-  public InputStream loadInputAsStream() {
-    return ImageAlignment.class.getResourceAsStream(String.format("%s%s%s%s", getDir(), OPENCV_PATH, getVersion(), getExt()));
-  }
-  
-  @Override
-  public List<InputStream> loadExtra() {
+  public List<InputStream> getInputStreams() {
     return OpenCVUtility
-          .loadExtraLibraries()
-          .stream()
-          .map(ImageAlignment.class::getResourceAsStream)
-          .collect(toList());
+            .loadLibraries(PREFIX, EXT)
+            .stream()
+            .map(ImageAlignment.class::getResourceAsStream)
+            .collect(toList());
+  }
+
+  @Override
+  public String getExt() {
+    return EXT;
   }
 }

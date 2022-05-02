@@ -209,8 +209,8 @@ public class FREAKBuilder extends AbstractBuilder {
   
   private MatOfKeyPoint getKeypoint(Mat image) {
     final MatOfKeyPoint tempKeypoint = new MatOfKeyPoint();
-    final StarDetector descriptor = StarDetector.create();
-    descriptor.detect(image, tempKeypoint);
+    final StarDetector detector = StarDetector.create();
+    detector.detect(image, tempKeypoint);
     return tempKeypoint;
   }
   

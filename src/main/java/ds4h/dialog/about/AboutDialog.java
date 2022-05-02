@@ -15,11 +15,15 @@ public class AboutDialog extends JDialog {
   private JLabel lbl_icon;
   private JPanel pnl_title;
   private JLabel lbl_version;
+  private JLabel lbl_supervisors;
   private JLabel lbl_supervisor1;
   private JLabel lbl_supervisor2;
   private JLabel lbl_author1;
   private JPanel pnl_credits;
-  
+
+  private JPanel pnl_heads;
+  private JPanel pnl_authors;
+
   public AboutDialog() {
     $$$setupUI$$$();
     this.setContentPane(contentPane);
@@ -205,7 +209,7 @@ public class AboutDialog extends JDialog {
     gbc.fill = GridBagConstraints.BOTH;
     gbc.insets = new Insets(10, 5, 0, 5);
     panel4.add(this.pnl_credits, gbc);
-    JLabel lbl_supervisors = new JLabel();
+    lbl_supervisors = new JLabel();
     lbl_supervisors.setText("Head of the project");
     gbc = new GridBagConstraints();
     gbc.gridx = 0;
@@ -214,7 +218,7 @@ public class AboutDialog extends JDialog {
     gbc.fill = GridBagConstraints.HORIZONTAL;
     gbc.insets = new Insets(10, 0, 0, 0);
     this.pnl_credits.add(lbl_supervisors, gbc);
-    JPanel pnl_heads = new JPanel();
+    pnl_heads = new JPanel();
     pnl_heads.setLayout(new GridBagLayout());
     pnl_heads.setMaximumSize(new Dimension(56, 32));
     gbc = new GridBagConstraints();
@@ -242,7 +246,7 @@ public class AboutDialog extends JDialog {
     gbc.weighty = 1.0;
     gbc.anchor = GridBagConstraints.WEST;
     pnl_heads.add(this.lbl_supervisor2, gbc);
-    JPanel pnl_authors = new JPanel();
+    pnl_authors = new JPanel();
     pnl_authors.setLayout(new GridBagLayout());
     pnl_authors.setMaximumSize(new Dimension(40, 48));
     gbc = new GridBagConstraints();

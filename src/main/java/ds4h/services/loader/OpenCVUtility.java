@@ -7,37 +7,39 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-package ds4h.services.library;
+package ds4h.services.loader;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public interface OpenCVUtility {
-  static String getExt() {
-    String ext = "";
-    if (LibraryLoader.getOS().startsWith("Windows")) {
-      ext = ".dll";
-    }
-    return ext;
-  }
-  
+  /**
+   *
+   * @return the current version
+   */
   static String getVersion() {
     return "455";
   }
-  
+
+  /**
+   *
+   * @return the res folder
+   */
   static String getDir() {
     return "/opencv/";
   }
-  
-  static String getPrefix() {
-    return "opencv_";
-  }
-  
-  static List<String> loadExtraLibraries() {
-    return Arrays.stream(ExtraLibraries.values())
+
+  /**
+   *
+   * @param prefix like 'libopencv'
+   * @param ext like '.dylib'
+   * @return all the libraries full path list
+   */
+  static List<String> loadLibraries(String prefix, String ext) {
+    return Arrays.stream(OpenCVLibraries.values())
           .map(Enum::name)
-          .map(name -> getDir() + getPrefix() + name.toLowerCase() + getVersion() + getExt())
+          .map(name -> getDir() + prefix + name.toLowerCase() + getVersion() + ext)
           .collect(Collectors.toList());
   }
 }

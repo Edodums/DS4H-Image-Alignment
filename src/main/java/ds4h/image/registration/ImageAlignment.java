@@ -33,7 +33,7 @@ import ds4h.image.buffered.BufferedImage;
 import ds4h.image.manager.ImagesManager;
 import ds4h.image.model.ImageFile;
 import ds4h.services.FileService;
-import ds4h.services.library.LoaderStrategy;
+import ds4h.services.loader.Loader;
 import ds4h.utils.Pair;
 import ds4h.utils.Utilities;
 import ij.IJ;
@@ -81,7 +81,7 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   private static final String DELETE_COMMAND = "Delete";
   
   static {
-    ImageAlignment.loadLibrary();
+    ImageAlignment.loader();
   }
   
   private List<String> tempImages = new ArrayList<>();
@@ -97,10 +97,9 @@ public class ImageAlignment implements OnMainDialogEventListener, OnPreviewDialo
   private boolean alignedImageSaved = false;
   private long totalMemory = 0;
   
-  private static void loadLibrary() {
-    LoaderStrategy strategy = new LoaderStrategy();
-    strategy.load();
-    strategy.loadExtra();
+  private static void loader() {
+    Loader loader = new Loader();
+    loader.load();
   }
   
   @Override
