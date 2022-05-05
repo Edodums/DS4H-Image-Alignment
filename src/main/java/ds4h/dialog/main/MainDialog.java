@@ -71,7 +71,7 @@ public class MainDialog extends ImageWindow {
     this.btnAlignImages.setToolTipText("Align the images based on the added corner points");
     this.btnAlignImages.setEnabled(false);
     final JButton btnAutoAlignment = new JButton("AUTO ALIGN IMAGES");
-    btnAutoAlignment.setToolTipText("Align the images automatically without thinking what it is need to be done");
+    btnAutoAlignment.setToolTipText("Align the images automatically without thinking what it is needed to be done");
     btnAutoAlignment.setEnabled(true);
     this.checkKeepOriginal = new JCheckBox("Keep all pixel data");
     this.checkKeepOriginal.setToolTipText("Keep the original images boundaries, applying stitching where necessary. NOTE: this operation is resource-intensive.");
